@@ -5,13 +5,13 @@ import os
 import glob
 
 import mediapipe as mp
-from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# --- Directory Configuration ---
-MODELS_DIR = "models"
-VIDEOS_DIR = "videos"
-OUTPUT_DIR = "output"
+# --- Directory Configuration (script-relative) ---
+BASE_DIR = os.path.dirname(__file__)
+MODELS_DIR = os.path.join(BASE_DIR, "models")
+VIDEOS_DIR = os.path.join(BASE_DIR, "videos")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
 # Ensure directories exist
 os.makedirs(MODELS_DIR, exist_ok=True)
@@ -27,18 +27,12 @@ def download_file(url, filename):
     return filepath
 
 # Download/locate the required task files inside the models directory
-face_model_path = download_file('https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task', 'face_landmarker.task')
 hand_model_path = download_file('https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task', 'hand_landmarker.task')
 pose_model_path = download_file('https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task', 'pose_landmarker.task')
 
 # Create landmarker options
 BaseOptions = mp.tasks.BaseOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
-
-face_options = vision.FaceLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path=face_model_path),
-    running_mode=VisionRunningMode.VIDEO,
-    num_faces=1)
 
 hand_options = vision.HandLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=hand_model_path),
@@ -65,8 +59,7 @@ def extract_features(video_path, output_data_path):
     all_frames_data = []
 
     print("Initializing MediaPipe models...")
-    with vision.FaceLandmarker.create_from_options(face_options) as face_landmarker, \
-         vision.HandLandmarker.create_from_options(hand_options) as hand_landmarker, \
+    with vision.HandLandmarker.create_from_options(hand_options) as hand_landmarker, \
          vision.PoseLandmarker.create_from_options(pose_options) as pose_landmarker:
         
         frame_idx = 0
@@ -88,26 +81,19 @@ def extract_features(video_path, output_data_path):
             if frame_idx > 0 and timestamp_ms <= all_frames_data[-1].get("timestamp_ms", -1):
                 timestamp_ms = all_frames_data[-1]["timestamp_ms"] + 1
 
-            # Process frame using the 3 models
-            face_result = face_landmarker.detect_for_video(mp_image, timestamp_ms)
+            # Process frame using the 2 models
             hand_result = hand_landmarker.detect_for_video(mp_image, timestamp_ms)
             pose_result = pose_landmarker.detect_for_video(mp_image, timestamp_ms)
             
             frame_data = {
                 "frame": frame_idx,
                 "timestamp_ms": timestamp_ms,
-                "face_landmarks": [],
                 "left_hand_landmarks": [],
                 "right_hand_landmarks": [],
                 "pose_landmarks": []
             }
-            
-            # 1. Face
-            if face_result.face_landmarks:
-                for lm in face_result.face_landmarks[0]:
-                    frame_data["face_landmarks"].append({"x": lm.x, "y": lm.y, "z": lm.z})
-                    
-            # 2. Hands
+
+            # 1. Hands
             if hand_result.hand_landmarks:
                 for idx, hand in enumerate(hand_result.handedness):
                     hand_label = hand[0].category_name
@@ -116,7 +102,7 @@ def extract_features(video_path, output_data_path):
                     for lm in landmarks:
                         target_list.append({"x": lm.x, "y": lm.y, "z": lm.z})
 
-            # 3. Pose
+            # 2. Pose
             if pose_result.pose_landmarks:
                 for lm in pose_result.pose_landmarks[0]:
                     frame_data["pose_landmarks"].append({
