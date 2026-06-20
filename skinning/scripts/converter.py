@@ -6,11 +6,11 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT_DIR / "src" / "output"
 
 def convert_all():
-    # Find all smoothed/ready npz files
-    ready_files = list(OUTPUT_DIR.glob("*_ready.npz"))
+    # Find all npz files (both raw and ready)
+    ready_files = list(OUTPUT_DIR.glob("*.npz"))
     
     if not ready_files:
-        print(f"No *_ready.npz files found in {OUTPUT_DIR}")
+        print(f"No .npz files found in {OUTPUT_DIR}")
         return
 
     for npz_path in ready_files:
