@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // SCENE SETUP
 // ============================================================================
 const scene = new THREE.Scene();
-const container = document.getElementById('avatar-container') || document.body;
+const container = document.getElementById('canvas-wrapper') || document.getElementById('avatar-container') || document.body;
 const width = container.clientWidth || window.innerWidth;
 const height = container.clientHeight || window.innerHeight;
 
@@ -106,10 +106,8 @@ function solveDirection(boneName, dirWorld, parentWorldQuat) {
 }
 
 // ============================================================================
-// NEUTRAL STANDING POSE
-// Called once at model load. Arms hang naturally at sides. Since targetQuaternions
-// holds this and slerp runs every frame, the model stays here when data is absent.
-// No T-pose. No crucifixion pose.
+// NEUTRAL STANDING POSE (Natural Rest)
+// Arms hang naturally at sides, fingers slightly curled.
 // ============================================================================
 function setNeutralPose() {
     const armL = boneObjects['LeftArm'];
@@ -121,24 +119,30 @@ function setNeutralPose() {
     armL.parent.getWorldQuaternion(pwL);
     armR.parent.getWorldQuaternion(pwR);
 
-    const qLA  = solveDirection('LeftArm',     new THREE.Vector3( 0.10, -0.97, 0.08).normalize(), pwL);
-    const qLFA = qLA ? solveDirection('LeftForeArm', new THREE.Vector3( 0.04, -0.98, 0.10).normalize(), pwL.clone().multiply(qLA)) : null;
+    // Natural hanging directions (slightly outwards)
+    const qLA  = solveDirection('LeftArm',     new THREE.Vector3( 0.15, -0.98, 0.0).normalize(), pwL);
+    const qLFA = qLA ? solveDirection('LeftForeArm', new THREE.Vector3( 0.10, -0.98, 0.0).normalize(), pwL.clone().multiply(qLA)) : null;
     if (qLA && qLFA) {
         const hp = pwL.clone().multiply(qLA).multiply(qLFA);
-        solveDirection('LeftHand', new THREE.Vector3(0, -1, 0.06).normalize(), hp);
+        solveDirection('LeftHand', new THREE.Vector3(0.10, -0.98, 0.0).normalize(), hp);
     }
 
-    const qRA  = solveDirection('RightArm',     new THREE.Vector3(-0.10, -0.97, 0.08).normalize(), pwR);
-    const qRFA = qRA ? solveDirection('RightForeArm', new THREE.Vector3(-0.04, -0.98, 0.10).normalize(), pwR.clone().multiply(qRA)) : null;
+    const qRA  = solveDirection('RightArm',     new THREE.Vector3(-0.15, -0.98, 0.0).normalize(), pwR);
+    const qRFA = qRA ? solveDirection('RightForeArm', new THREE.Vector3(-0.10, -0.98, 0.0).normalize(), pwR.clone().multiply(qRA)) : null;
     if (qRA && qRFA) {
         const hp = pwR.clone().multiply(qRA).multiply(qRFA);
-        solveDirection('RightHand', new THREE.Vector3(0, -1, 0.06).normalize(), hp);
+        solveDirection('RightHand', new THREE.Vector3(-0.10, -0.98, 0.0).normalize(), hp);
     }
 
+    // Slightly curl all fingers for a relaxed human look
+    const curlAngle = 25 * Math.PI / 180; // 25 degrees
     targetBones
         .filter(n => n.includes('Hand') && n !== 'LeftHand' && n !== 'RightHand')
         .forEach(name => {
-            if (restQuaternions[name]) targetQuaternions[name].copy(restQuaternions[name]);
+            if (restQuaternions[name]) {
+                const curl = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), curlAngle);
+                targetQuaternions[name].copy(restQuaternions[name].clone().multiply(curl));
+            }
         });
 }
 
@@ -242,8 +246,6 @@ function solveFingers(handData, side, handWorldQuat) {
     if (!handData || handData.length < 21 || handData[0][0] === 0) return;
 
     fingerChains[side].forEach(chain => {
-        // Each finger chain starts fresh from the hand bone's world orientation.
-        // We propagate this forward through the chain without reading stale scene state.
         let parentWorldQuat = handWorldQuat.clone();
 
         chain.forEach(boneName => {
@@ -258,22 +260,10 @@ function solveFingers(handData, side, handWorldQuat) {
             const b = lmToWorld(handData[seg[1]]);
             if (a.lengthSq() === 0 || b.lengthSq() === 0) return;
 
-            // World-space direction this finger segment points
             const dirWorld = new THREE.Vector3().subVectors(b, a).normalize();
-
-            // Transform into current parent bone's local space
             const dirLocal = dirWorld.clone().applyQuaternion(parentWorldQuat.clone().invert());
-
-            // Transform into the bone's REST local space.
-            // After this, boneVector (e.g. (0,1,0) for Mixamo) is the "straight" reference.
             const dirInBoneRest = dirLocal.clone().applyQuaternion(rest.clone().invert());
 
-            // boneVector points along the bone's "forward" in its rest local space.
-            // For Mixamo fingers: boneVector ≈ (0,1,0) — fingers point along local Y.
-            // Flex = rotation around local X that curls the Y-axis bone.
-            //   After flex θ around X: bone points to (0, cosθ, sinθ) — wait, that's wrong.
-            //   Rx(θ) applied to (0,1,0): (0, cosθ, -sinθ)? Let me be careful.
-            //   THREE.Euler 'XYZ', Rx(θ): (0,1,0) → (0, cosθ, sinθ) in column-major.
             //   So flex component: atan2(dirInBoneRest.z, dirInBoneRest.y) → but sign TBD.
             //
             // Actually: Code A/B's setFromUnitVectors approach works, just fix the euler coupling.
@@ -339,134 +329,6 @@ function solveFingers(handData, side, handWorldQuat) {
 }
 
 // ============================================================================
-// ARM SOLVER — one side at a time
-// ============================================================================
-function solveArmChain(bodyData, handData, side) {
-    const isLeft = (side === 'Left');
-    const sId = isLeft ? 11 : 12; // Shoulder
-    const eId = isLeft ? 13 : 14; // Elbow
-    const wId = isLeft ? 15 : 16; // Wrist
-
-    const armName     = isLeft ? 'LeftArm'      : 'RightArm';
-    const foreArmName = isLeft ? 'LeftForeArm'  : 'RightForeArm';
-    const handName    = isLeft ? 'LeftHand'     : 'RightHand';
-
-    const arm     = boneObjects[armName];
-    const foreArm = boneObjects[foreArmName];
-    if (!arm || !foreArm) return;
-
-    const shoulder = lmToWorld(bodyData[sId]);
-    const elbow    = lmToWorld(bodyData[eId]);
-    const wrist    = lmToWorld(bodyData[wId]);
-
-    if (shoulder.lengthSq() === 0 || elbow.lengthSq() === 0) return;
-
-    // Shoulder socket parent world quaternion (constant — model is stationary)
-    const pwQ = new THREE.Quaternion();
-    arm.parent.getWorldQuaternion(pwQ);
-
-    // 1. Raw MediaPipe directions (unaltered!)
-    let upperDir = new THREE.Vector3().subVectors(elbow, shoulder).normalize();
-    let foreDir  = new THREE.Vector3().subVectors(wrist, elbow).normalize();
-
-    // 2. Exact Target in World Space
-    // We check if hand data exists first to get the most accurate wrist position
-    let targetWrist;
-    if (handData && handData.length > 0 && handData[0].some(v=>v!==0)) {
-        targetWrist = getTargetPosition(handData[0]);
-    } else {
-        targetWrist = getTargetPosition(bodyData[wId]);
-    }
-    
-    const avatarShoulder = new THREE.Vector3();
-    arm.getWorldPosition(avatarShoulder);
-    
-    // Target vector from shoulder
-    let targetVec = new THREE.Vector3().subVectors(targetWrist, avatarShoulder);
-    
-    // Convert target distance to local bone units
-    const armScale = new THREE.Vector3();
-    arm.getWorldScale(armScale);
-    targetVec.x /= armScale.x;
-    targetVec.y /= armScale.y;
-    targetVec.z /= armScale.z;
-
-    const L1 = foreArm.position.length();
-    const hand = boneObjects[handName];
-    if (!hand) return;
-    const L2 = hand.position.length();
-
-    // 3. Flawless Geometric 2-Bone IK
-    const targetDist = targetVec.length();
-    if (targetDist > 1e-6) {
-        // Clamp to physically reachable distance so the math never breaks
-        const reachableDist = Math.min(targetDist, L1 + L2 - 0.001);
-        const targetDir = targetVec.clone().normalize();
-        
-        // Law of cosines to find the interior angle at the shoulder
-        let cosAlpha = (L1*L1 + reachableDist*reachableDist - L2*L2) / (2 * L1 * reachableDist);
-        cosAlpha = Math.max(-1, Math.min(1, cosAlpha));
-        const sinAlpha = Math.sqrt(1 - cosAlpha*cosAlpha);
-        
-        // Extract true elbow pop-out direction from MediaPipe to preserve natural bending
-        const dot = upperDir.dot(targetDir);
-        let ortho = new THREE.Vector3().subVectors(upperDir, targetDir.clone().multiplyScalar(dot));
-        if (ortho.lengthSq() < 1e-6) {
-            ortho = new THREE.Vector3(0,1,0).cross(targetDir);
-            if (ortho.lengthSq() < 1e-6) ortho.set(1,0,0);
-        }
-        ortho.normalize();
-        
-        // The perfect upper arm direction that hits the sphere of the elbow
-        upperDir = new THREE.Vector3()
-            .addScaledVector(targetDir, cosAlpha)
-            .addScaledVector(ortho, sinAlpha);
-            
-        // The forearm simply points from the new elbow exactly to the wrist target
-        foreDir = new THREE.Vector3().subVectors(
-            targetDir.clone().multiplyScalar(reachableDist),
-            upperDir.clone().multiplyScalar(L1)
-        ).normalize();
-    }
-
-    // ---- Upper arm ----
-    const qArm = solveDirection(armName, upperDir, pwQ);
-    if (!qArm) return;
-    const armWorld = pwQ.clone().multiply(qArm);
-
-    // ---- Forearm ----
-    const qFore = solveDirection(foreArmName, foreDir, armWorld);
-    if (!qFore) return;
-    const foreWorld = armWorld.clone().multiply(qFore);
-
-    // ---- Hand + Fingers ----
-    const hasHand       = handData && handData.length >= 21 && handData[0][0] !== 0;
-    const restBasis     = side === 'Left' ? restBasisQuatL        : restBasisQuatR;
-    const handRestWorld = side === 'Left' ? leftHandRestWorldQuat  : rightHandRestWorldQuat;
-    const basisReady    = side === 'Left' ? isLeftHandBasisReady   : isRightHandBasisReady;
-
-    if (hasHand && basisReady) {
-        // Hand orientation via palm-plane basis delta
-        const handWorldQuat = solveHandOrientation(
-            handData, handName, restBasis, handRestWorld, foreWorld, side
-        );
-        // Fingers via parent-space chain tracking
-        solveFingers(handData, side, handWorldQuat);
-    } else {
-        // No tracking data: fall back to neutral downward-hanging hand
-        const fallback = new THREE.Vector3(
-            side === 'Left' ? 0.02 : -0.02, -1.0, 0.06
-        ).normalize();
-        solveDirection(handName, fallback, foreWorld);
-
-        // Reset all fingers to rest
-        fingerChains[side].forEach(chain => chain.forEach(name => {
-            if (restQuaternions[name]) targetQuaternions[name].copy(restQuaternions[name]);
-        }));
-    }
-}
-
-// ============================================================================
 // MAP MEDIAPIPE TO AVATAR SPACE
 // ============================================================================
 let mpScale = 1.0;
@@ -487,14 +349,179 @@ function updateMappingParams(frameData) {
     const mDist   = mL.distanceTo(mR);
     const mCenter = new THREE.Vector3().addVectors(mL, mR).multiplyScalar(0.5);
 
-    if (mDist > 0) {
-        mpScale = aDist / mDist;
+    if (mDist > 0.001) {
+        let scale = aDist / mDist;
+        // CRITICAL FIX: Tight clamp so the scale doesn't explode when shoulders glitch
+        scale = Math.max(0.8, Math.min(1.5, scale));
+        mpScale = scale;
         mpOffset.copy(aCenter).sub(mCenter.clone().multiplyScalar(mpScale));
     }
 }
 
 function getTargetPosition(lm) {
     return lmToWorld(lm).multiplyScalar(mpScale).add(mpOffset);
+}
+
+// ============================================================================
+// ARM SOLVER — one side at a time
+// ============================================================================
+function solveArmChain(bodyData, handData, side) {
+    const isLeft = (side === 'Left');
+    const sId = isLeft ? 11 : 12; // Shoulder
+    const eId = isLeft ? 13 : 14; // Elbow
+    const wId = isLeft ? 15 : 16; // Wrist
+
+    const armName     = isLeft ? 'LeftArm'      : 'RightArm';
+    const foreArmName = isLeft ? 'LeftForeArm'  : 'RightForeArm';
+    const handName    = isLeft ? 'LeftHand'     : 'RightHand';
+
+    const arm     = boneObjects[armName];
+    const foreArm = boneObjects[foreArmName];
+    if (!arm || !foreArm) return;
+
+    const shoulder = lmToWorld(bodyData[sId]);
+    const elbow    = lmToWorld(bodyData[eId]);
+    const wrist    = lmToWorld(bodyData[wId]);
+
+    const pwQ = new THREE.Quaternion();
+    arm.parent.getWorldQuaternion(pwQ);
+    const avatarShoulder = new THREE.Vector3();
+    arm.getWorldPosition(avatarShoulder);
+
+    const hasHand = handData && handData.length >= 21 && (handData[0][0] !== 0 || handData[0][1] !== 0 || handData[0][2] !== 0);
+    const wristMissing = !bodyData[wId] || (bodyData[wId][0] === 0 && bodyData[wId][1] === 0 && bodyData[wId][2] === 0);
+
+    // TRUE REST POSE: If BOTH wrist and hand tracking are missing, drop to natural rest
+    if (wristMissing && !hasHand) {
+        const restTarget = avatarShoulder.clone().add(new THREE.Vector3(isLeft ? -0.15 : 0.15, -0.4, 0.0));
+        let restVec = new THREE.Vector3().subVectors(restTarget, avatarShoulder);
+        const restDist = restVec.length();
+        if (restDist > 1e-6) {
+            const restDir = restVec.clone().normalize();
+            const qArm = solveDirection(armName, restDir, pwQ);
+            if (qArm) {
+                const armW = pwQ.clone().multiply(qArm);
+                const qFore = solveDirection(foreArmName, restDir, armW);
+                if (qFore) {
+                    const foreW = armW.clone().multiply(qFore);
+                    solveDirection(handName, restDir, foreW);
+                }
+            }
+        }
+        const curlAngle = 25 * Math.PI / 180;
+        fingerChains[side].forEach(chain => chain.forEach(name => {
+            if (restQuaternions[name]) {
+                const curl = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), curlAngle);
+                targetQuaternions[name].copy(restQuaternions[name].clone().multiply(curl));
+            }
+        }));
+        return;
+    }
+
+    if (shoulder.lengthSq() === 0 || elbow.lengthSq() === 0) return;
+
+    let upperDir = new THREE.Vector3().subVectors(elbow, shoulder).normalize();
+    let foreDir  = new THREE.Vector3().subVectors(wrist, elbow).normalize();
+
+    // 2. Exact Target in World Space
+    let targetWrist = null;
+    if (!wristMissing) {
+        targetWrist = getTargetPosition(bodyData[wId]);
+    } else if (hasHand) {
+        targetWrist = getTargetPosition(handData[0]);
+    }
+    
+    if (!targetWrist) return;
+    
+    // Fix MediaPipe Y-squash when facing sideways
+    if (wrist.y > elbow.y) {
+        const noseTarget = getTargetPosition(bodyData[0]);
+        targetWrist.y = noseTarget.y - 0.1; 
+    }
+
+    // CRITICAL FIX: Strict Torso Collision Avoidance (Z-axis)
+    // Prevent wrists from going behind the chest
+    const minZ = avatarShoulder.z - 0.1;
+    if (targetWrist.z < minZ) {
+        targetWrist.z = minZ;
+    }
+    
+    let targetVec = new THREE.Vector3().subVectors(targetWrist, avatarShoulder);
+    
+    const targetDist = targetVec.length();
+    if (targetDist > 1e-6) {
+        const armScale = new THREE.Vector3();
+        arm.getWorldScale(armScale);
+        const scale = armScale.y;
+        
+        let L1 = foreArm.position.length() * scale;
+        let L2 = boneObjects[handName].position.length() * scale;
+
+        // RUBBER-BANDING: Stretch arm to reach target perfectly
+        if (targetDist > L1 + L2) {
+            const stretch = targetDist / (L1 + L2);
+            L1 *= stretch;
+            L2 *= stretch;
+        }
+
+        const reachableDist = Math.min(targetDist, L1 + L2 - 0.001 * scale);
+        const targetDir = targetVec.clone().normalize();
+        
+        let cosAlpha = (L1*L1 + reachableDist*reachableDist - L2*L2) / (2 * L1 * reachableDist);
+        cosAlpha = Math.max(-1, Math.min(1, cosAlpha));
+        const sinAlpha = Math.sqrt(1 - cosAlpha*cosAlpha);
+        
+        // Extract true elbow pop-out direction from MediaPipe to preserve natural bending
+        const dot = upperDir.dot(targetDir);
+        let ortho = new THREE.Vector3().subVectors(upperDir, targetDir.clone().multiplyScalar(dot));
+        if (ortho.lengthSq() < 1e-6) {
+            ortho = new THREE.Vector3(0,1,0).cross(targetDir);
+            if (ortho.lengthSq() < 1e-6) ortho.set(1,0,0);
+        }
+        ortho.normalize();
+        
+        upperDir = new THREE.Vector3()
+            .addScaledVector(targetDir, cosAlpha)
+            .addScaledVector(ortho, sinAlpha);
+            
+        foreDir = new THREE.Vector3().subVectors(
+            targetDir.clone().multiplyScalar(reachableDist),
+            upperDir.clone().multiplyScalar(L1)
+        ).normalize();
+    }
+
+    const qArm = solveDirection(armName, upperDir, pwQ);
+    if (!qArm) return;
+    const armWorld = pwQ.clone().multiply(qArm);
+
+    const qFore = solveDirection(foreArmName, foreDir, armWorld);
+    if (!qFore) return;
+    const foreWorld = armWorld.clone().multiply(qFore);
+
+    const restBasis     = side === 'Left' ? restBasisQuatL        : restBasisQuatR;
+    const handRestWorld = side === 'Left' ? leftHandRestWorldQuat  : rightHandRestWorldQuat;
+    const basisReady    = side === 'Left' ? isLeftHandBasisReady   : isRightHandBasisReady;
+
+    if (hasHand && basisReady) {
+        const handWorldQuat = solveHandOrientation(
+            handData, handName, restBasis, handRestWorld, foreWorld, side
+        );
+        solveFingers(handData, side, handWorldQuat);
+    } else {
+        // Hand tracking missing, but wrist is tracked. Curl fingers into a fist.
+        const fallback = new THREE.Vector3(
+            side === 'Left' ? 0.02 : -0.02, -1.0, 0.06
+        ).normalize();
+        solveDirection(handName, fallback, foreWorld);
+
+        const curlAngle = 25 * Math.PI / 180;
+        fingerChains[side].forEach(chain => chain.forEach(name => {
+            if (restQuaternions[name]) {
+                const curl = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), curlAngle);
+                targetQuaternions[name].copy(restQuaternions[name].clone().multiply(curl));
+            }
+        }));
+    }
 }
 
 // ============================================================================
@@ -681,14 +708,24 @@ const FRAME_DUR   = 1 / 30;
 // Since the data is already pre-smoothed by the Python script, we don't need heavy client-side sluggishness.
 const SLERP_SPEED = 0.6;
 
-window.addEventListener('resize', () => {
-    const container = document.getElementById('avatar-container') || document.body;
+const handleResize = () => {
+    const container = document.getElementById('canvas-wrapper') || document.getElementById('avatar-container') || document.body;
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
-});
+};
+
+window.addEventListener('resize', handleResize);
+
+const containerEl = document.getElementById('avatar-container');
+if (containerEl) {
+    const resizeObserver = new ResizeObserver(() => {
+        handleResize();
+    });
+    resizeObserver.observe(containerEl);
+}
 
 function animate() {
     requestAnimationFrame(animate);
@@ -699,16 +736,10 @@ function animate() {
         if (timeAccum >= FRAME_DUR) {
             timeAccum -= FRAME_DUR;
             updateAvatar(animationFrames[currentFrame]);
-            updateVisualizer(animationFrames[currentFrame]);
+            // updateVisualizer(animationFrames[currentFrame]); <-- COMMENTED OUT TO REMOVE RED DOTS
             
-            if (currentFrame < animationFrames.length - 1) {
-                currentFrame++;
-            } else {
-                isPlaying = false;
-                setNeutralPose();
-                if (typeof landmarkSpheres !== 'undefined') {
-                    landmarkSpheres.forEach(s => s.visible = false);
-                }
+            if (animationFrames.length > 1) {
+                currentFrame = (currentFrame + 1) % animationFrames.length;
             }
         }
     }
