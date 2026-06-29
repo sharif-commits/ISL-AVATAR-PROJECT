@@ -606,7 +606,15 @@ loader.load('./assets/male2k.glb', (gltf) => {
         restQuaternions[baseName]   = child.quaternion.clone();
         targetQuaternions[baseName] = child.quaternion.clone();
 
-        const childBone = child.children.find(c => c.isBone);
+        let childBone = null;
+        const childBones = child.children.filter(c => c.isBone);
+        if (childBones.length > 0) {
+            // For branching joints like Hands, prioritize the Middle finger to find the true central axis
+            childBone = childBones.find(c => c.name.includes('Middle1')) || 
+                        childBones.find(c => c.name.includes('Index1')) ||
+                        childBones[0];
+        }
+
         child.userData.boneVector = childBone
             ? childBone.position.clone().normalize()
             : new THREE.Vector3(0, 1, 0);
@@ -615,6 +623,7 @@ loader.load('./assets/male2k.glb', (gltf) => {
         if (childBone && childBone.position.length() > 0.01) {
             length = childBone.position.length();
         }
+        child.userData.boneLength = length;
 
         const isFinger = baseName.includes('Thumb') || baseName.includes('Index') || 
                          baseName.includes('Middle') || baseName.includes('Ring') || 
@@ -633,17 +642,46 @@ loader.load('./assets/male2k.glb', (gltf) => {
         });
         const hitMesh = new THREE.Mesh(hitGeo, hitMat);
         
-        // Create a visible bone line
-        const boneGeo = new THREE.CylinderGeometry(0.002, 0.002, length, 4);
-        boneGeo.rotateX(Math.PI / 2);
-        boneGeo.translate(0, 0, length / 2);
+        // Make bones white by default (as requested)
+        const baseColor = new THREE.Color(0xffffff);
+        
         const boneMat = new THREE.MeshBasicMaterial({ 
-            color: 0xffffff,
-            opacity: 0.3,
+            color: baseColor,
+            opacity: 0.0, // Hidden by default, updated by toggle later
             transparent: true,
             depthTest: false 
         });
-        const visibleBone = new THREE.Mesh(boneGeo, boneMat);
+
+        // Create fancy octahedral bone visual
+        const boneGroup = new THREE.Group();
+        
+        // Dynamic proportions based on length to prevent disproportionate shapes
+        const wideZ = length * 0.2; // Widest part at 20%
+        let width = length * 0.15;
+        if (isFinger) width = length * 0.1;
+        width = Math.min(width, radius * 1.5); // Clamp max width
+        
+        // 1. Joint Sphere (perfectly centered on the joint)
+        const jointGeo = new THREE.SphereGeometry(width * 1.2, 8, 8);
+        const jointMesh = new THREE.Mesh(jointGeo, boneMat);
+        boneGroup.add(jointMesh);
+        
+        // 2. Octahedron Body (Two Cones aligned to Z-axis)
+        const botGeo = new THREE.ConeGeometry(width, wideZ, 4);
+        botGeo.rotateX(-Math.PI / 2); // Align to Z axis
+        botGeo.rotateZ(Math.PI / 4);  // Spin around Z axis to create flat diamond sides
+        botGeo.translate(0, 0, wideZ / 2);
+        const botMesh = new THREE.Mesh(botGeo, boneMat);
+        boneGroup.add(botMesh);
+        
+        const topGeo = new THREE.ConeGeometry(width, length - wideZ, 4);
+        topGeo.rotateX(Math.PI / 2);
+        topGeo.rotateZ(Math.PI / 4);
+        topGeo.translate(0, 0, wideZ + (length - wideZ) / 2);
+        const topMesh = new THREE.Mesh(topGeo, boneMat);
+        boneGroup.add(topMesh);
+        
+        const visibleBone = boneGroup;
 
         if (childBone) {
             const dir = childBone.position.clone().normalize();
@@ -653,6 +691,8 @@ loader.load('./assets/male2k.glb', (gltf) => {
         
         hitMesh.userData.boneName = baseName;
         hitMesh.userData.visibleBone = visibleBone;
+        hitMesh.userData.boneMat = boneMat;
+        hitMesh.userData.baseColor = baseColor;
         child.add(hitMesh);
         child.add(visibleBone);
         boneHitMeshes.push(hitMesh);
@@ -666,7 +706,7 @@ loader.load('./assets/male2k.glb', (gltf) => {
     rotationGizmo.renderOrder = 1000;
     
     // 1. Inner Sphere for IK translation
-    const innerRadius = 0.02;
+    const innerRadius = 0.04; // Way bigger
     const innerGeo = new THREE.SphereGeometry(innerRadius, 16, 16);
     const innerMat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
@@ -680,8 +720,8 @@ loader.load('./assets/male2k.glb', (gltf) => {
     rotationGizmo.add(innerIKSphere);
 
     // 2. Outer Rings for Rotation
-    const ringRadius = 0.06;
-    const tubeRadius = 0.003;
+    const ringRadius = 0.14; // Back to a reasonable size
+    const tubeRadius = 0.01; // Thicker than original, but not too chunky
     const ringSegments = 48;
     const tubeSegments = 12;
     
@@ -790,11 +830,13 @@ function applyManualFrame(frameIndex) {
 
 function updateUIForSelectedBone(fromManualEdit = false) {
     const nameEl = document.getElementById('selected-bone-name');
+    const deselectBtn = document.getElementById('ui-deselect-btn');
     if (!nameEl) return; 
     
     if (!selectedBoneName) {
         nameEl.textContent = 'None';
         nameEl.style.color = '#ccc';
+        if (deselectBtn) deselectBtn.style.display = 'none';
         return;
     }
     
@@ -803,6 +845,7 @@ function updateUIForSelectedBone(fromManualEdit = false) {
     
     nameEl.textContent = selectedBoneName;
     nameEl.style.color = '#4CAF50';
+    if (deselectBtn) deselectBtn.style.display = 'block';
     
     if (!fromManualEdit || lastSelectedBoneForEuler !== selectedBoneName) {
         activeEuler.setFromQuaternion(bone.quaternion, 'XYZ');
@@ -820,17 +863,49 @@ function showUnsavedModal(targetFrame) {
     if (modal) modal.style.display = 'block';
 }
 
+function setPlaying(state) {
+    isPlaying = state;
+    const playBtn = document.getElementById('play-pause-btn');
+    const symbol = isPlaying ? '⏸' : '▶';
+    if (playBtn) playBtn.textContent = symbol;
+    
+    document.querySelectorAll('.fs-play-pause-btn').forEach(btn => {
+        btn.textContent = symbol;
+    });
+    
+    const vid = document.getElementById('reference-video');
+    if (vid) {
+        if (isPlaying) {
+            // Sync time once before starting playback
+            vid.currentTime = currentFrame / 30.0;
+            vid.play().catch(e => console.warn("Video play blocked:", e));
+        } else {
+            vid.pause();
+        }
+    }
+}
+
+let originalFrameState = null;
+
 function goToFrame(frameIdx) {
+    if (window.deselectBone) window.deselectBone();
+    
     currentFrame = frameIdx;
+    
+    // Take a pristine snapshot for discard purposes
+    if (isManualMode && manualFrames[currentFrame]) {
+        originalFrameState = JSON.parse(JSON.stringify(manualFrames[currentFrame]));
+    }
+    
     const slider = document.getElementById('frame-slider');
     if (slider) slider.value = currentFrame;
+    document.querySelectorAll('.fs-frame-slider').forEach(s => s.value = currentFrame);
     
     const currDisp = document.getElementById('current-frame-display');
     if (currDisp) currDisp.textContent = currentFrame;
+    document.querySelectorAll('.fs-current-frame-display').forEach(d => d.textContent = currentFrame);
     
-    isPlaying = false;
-    const playBtn = document.getElementById('play-pause-btn');
-    if (playBtn) playBtn.textContent = '▶';
+    setPlaying(false);
     
     if (isManualMode) {
         applyManualFrame(currentFrame);
@@ -838,11 +913,20 @@ function goToFrame(frameIdx) {
         updateAvatar(animationFrames[currentFrame]);
     }
     updateUIForSelectedBone();
+    syncVideoToFrame(currentFrame);
+}
+
+function syncVideoToFrame(frameIdx) {
+    const vid = document.getElementById('reference-video');
+    if (vid) {
+        if (!isPlaying) {
+            vid.currentTime = frameIdx / 30.0; // Assuming 30 FPS
+        }
+    }
 }
 
 // UI Bindings
-const saveBtn = document.getElementById('save-btn');
-if (saveBtn) {
+if (true) {
     async function saveToDisk(callback) {
         try {
             if (window.showDirectoryPicker && typeof idbKeyval !== 'undefined') {
@@ -888,13 +972,39 @@ if (saveBtn) {
         }
     }
 
-    saveBtn.addEventListener('click', () => saveToDisk());
+    const saveFrameBtn = document.getElementById('save-frame-btn');
+    if (saveFrameBtn) {
+        saveFrameBtn.addEventListener('click', () => {
+            hasUnsavedChanges = false;
+            
+            const originalText = "Save Current Frame";
+            saveFrameBtn.textContent = `✅ Frame ${currentFrame} Saved!`;
+            saveFrameBtn.style.backgroundColor = '#388E3C';
+            
+            setTimeout(() => {
+                saveFrameBtn.textContent = originalText;
+                saveFrameBtn.style.backgroundColor = '#4CAF50';
+            }, 2000);
+        });
+    }
+
+    const saveAllBtn = document.getElementById('save-all-btn');
+    if (saveAllBtn) {
+        saveAllBtn.addEventListener('click', () => saveToDisk());
+    }
 
     const discardBtn = document.getElementById('modal-discard');
     if (discardBtn) {
         discardBtn.addEventListener('click', () => {
             document.getElementById('unsaved-modal').style.display = 'none';
             hasUnsavedChanges = false;
+            
+            // Restore pristine state for this frame if it exists
+            if (originalFrameState && manualFrames[currentFrame]) {
+                manualFrames[currentFrame] = JSON.parse(JSON.stringify(originalFrameState));
+                applyManualFrame(currentFrame);
+            }
+            
             goToFrame(pendingFrameChange);
         });
     }
@@ -903,8 +1013,73 @@ if (saveBtn) {
     if (modalSaveBtn) {
         modalSaveBtn.addEventListener('click', () => {
             document.getElementById('unsaved-modal').style.display = 'none';
-            saveToDisk(() => goToFrame(pendingFrameChange));
+            hasUnsavedChanges = false;
+            goToFrame(pendingFrameChange);
         });
+    }
+
+    const importPrevBtn = document.getElementById('import-prev-btn');
+    if (importPrevBtn) {
+        importPrevBtn.addEventListener('click', () => {
+            if (!isManualMode) return;
+            if (currentFrame === 0) {
+                alert("Cannot import previous pose: This is the first frame (Frame 0).");
+                return;
+            }
+            if (!manualFrames[currentFrame - 1]) return;
+            
+            const confirmed = confirm("Are you sure you want to import the previous pose? This will overwrite the current frame's pose.");
+            if (!confirmed) return;
+            
+            if (window.deselectBone) window.deselectBone();
+            
+            // Copy previous frame to current
+            manualFrames[currentFrame] = JSON.parse(JSON.stringify(manualFrames[currentFrame - 1]));
+            hasUnsavedChanges = true;
+            applyManualFrame(currentFrame);
+            
+            // Visual feedback
+            const originalText = "Import Prev Pose";
+            importPrevBtn.textContent = "✅ Successfully Imported!";
+            importPrevBtn.style.backgroundColor = '#4CAF50';
+            
+            setTimeout(() => {
+                importPrevBtn.textContent = originalText;
+                importPrevBtn.style.backgroundColor = '#607d8b';
+            }, 2000);
+        });
+    }
+
+    const sidebarToggleBtn = document.getElementById('sidebar-toggle');
+    if (sidebarToggleBtn) {
+        sidebarToggleBtn.addEventListener('click', () => {
+            const sidebar = document.getElementById('sidebar');
+            const mainView = document.getElementById('main-view');
+            sidebar.classList.toggle('collapsed');
+            mainView.classList.toggle('collapsed');
+            sidebarToggleBtn.classList.toggle('collapsed');
+        });
+    }
+    
+    function toggleFullscreen(element) {
+        if (!document.fullscreenElement) {
+            if (isPlaying) setPlaying(false);
+            element.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }
+
+    const videoFsBtn = document.getElementById('video-fs-btn');
+    if (videoFsBtn) {
+        videoFsBtn.addEventListener('click', () => toggleFullscreen(document.getElementById('video-wrapper')));
+    }
+
+    const avatarFsBtn = document.getElementById('avatar-fs-btn');
+    if (avatarFsBtn) {
+        avatarFsBtn.addEventListener('click', () => toggleFullscreen(document.getElementById('avatar-container')));
     }
 
     function attachAdjustmentListener(id, axis, type, sign) {
@@ -987,12 +1162,16 @@ if (saveBtn) {
                 const linkBone = boneObjects[chain[j]];
                 if (!linkBone) continue;
                 
-                // Effector is the origin of the selected bone
+                // Effector is now the midpoint of the selected bone
                 const effectorBone = boneObjects[chain[0]];
                 if (!effectorBone) continue;
                 
+                const length = effectorBone.userData.boneLength || 0.05;
+                const midLocal = effectorBone.userData.boneVector.clone().multiplyScalar(length / 2);
+                
                 const effectorPos = new THREE.Vector3();
-                effectorBone.getWorldPosition(effectorPos);
+                effectorBone.localToWorld(midLocal);
+                effectorPos.copy(midLocal);
                 
                 const linkWorldPos = new THREE.Vector3();
                 linkBone.getWorldPosition(linkWorldPos);
@@ -1065,43 +1244,65 @@ if (saveBtn) {
         const bone = boneObjects[boneName];
         if (!bone) return;
         
+        // Find midpoint of the bone in local space
+        const length = bone.userData.boneLength || 0.05;
+        const midLocal = bone.userData.boneVector.clone().multiplyScalar(length / 2);
+        
+        // Convert midpoint to world space
         const worldPos = new THREE.Vector3();
-        bone.getWorldPosition(worldPos);
+        bone.localToWorld(midLocal);
+        worldPos.copy(midLocal);
+        
+        // Scale gizmo: 2x for main joints, 1x for fingers
+        const isFinger = boneName.includes('Thumb') || boneName.includes('Index') || 
+                         boneName.includes('Middle') || boneName.includes('Ring') || 
+                         boneName.includes('Pinky');
+        
+        if (isFinger) {
+            rotationGizmo.scale.set(1, 1, 1);
+        } else {
+            rotationGizmo.scale.set(2, 2, 2);
+        }
+        
         rotationGizmo.position.copy(worldPos);
         rotationGizmo.visible = true;
     }
     
     function hideGizmo() {
         if (rotationGizmo) rotationGizmo.visible = false;
+        if (typeof updateTooltip === 'function') updateTooltip(false);
     }
     
     function selectBone(boneName) {
         selectedBoneName = boneName;
+        if (typeof updateTooltip === 'function') updateTooltip(false);
         
-        // Highlight selected bone's visible cylinder, dim others
+        // Highlight selected bone's visible cylinder, hide others
         boneHitMeshes.forEach(h => {
             if (h.userData.boneName === boneName) {
-                h.userData.visibleBone.material.color.setHex(0xff4444);
-                h.userData.visibleBone.material.opacity = 0.8;
+                h.userData.boneMat.color.setHex(0xff4444);
+                h.userData.boneMat.opacity = 1.0;
             } else {
-                h.userData.visibleBone.material.color.setHex(0xffffff);
-                h.userData.visibleBone.material.opacity = 0.3;
+                h.userData.boneMat.color.copy(h.userData.baseColor);
+                h.userData.boneMat.opacity = getBaseOpacity();
             }
         });
         
         showGizmoAtBone(boneName);
         updateUIForSelectedBone();
     }
+    window.selectBone = selectBone;
     
     function deselectBone() {
         selectedBoneName = null;
         boneHitMeshes.forEach(h => {
-            h.userData.visibleBone.material.color.setHex(0xffffff);
-            h.userData.visibleBone.material.opacity = 0.3;
+            h.userData.boneMat.color.copy(h.userData.baseColor);
+            h.userData.boneMat.opacity = getBaseOpacity();
         });
         hideGizmo();
         updateUIForSelectedBone();
     }
+    window.deselectBone = deselectBone;
     
     function persistBoneChange(boneName) {
         if (!isManualMode || !manualFrames[currentFrame]) return;
@@ -1143,6 +1344,51 @@ if (saveBtn) {
         return Math.atan2(dy, dx);
     }
 
+    // ========================================================================
+    // TOOLTIP FOR FIXED BONES & VISIBILITY TOGGLE
+    // ========================================================================
+    
+    let alwaysShowBones = false;
+    function getBaseOpacity() { return alwaysShowBones ? 0.6 : 0.0; }
+    
+    // Wire up the checkbox from debug.html if it exists
+    const visibilityToggle = document.getElementById('always-show-bones');
+    if (visibilityToggle) {
+        visibilityToggle.addEventListener('change', (e) => {
+            alwaysShowBones = e.target.checked;
+            // Update all bones immediately
+            boneHitMeshes.forEach(h => {
+                if (h.userData.boneName !== selectedBoneName) {
+                    h.userData.boneMat.opacity = getBaseOpacity();
+                }
+            });
+        });
+    }
+
+    let ikTooltip = document.createElement('div');
+    ikTooltip.style.position = 'fixed';
+    ikTooltip.style.background = 'rgba(0,0,0,0.8)';
+    ikTooltip.style.color = '#ff6666';
+    ikTooltip.style.padding = '6px 10px';
+    ikTooltip.style.borderRadius = '4px';
+    ikTooltip.style.pointerEvents = 'none';
+    ikTooltip.style.fontSize = '12px';
+    ikTooltip.style.display = 'none';
+    ikTooltip.style.zIndex = '1000';
+    ikTooltip.style.fontFamily = 'sans-serif';
+    ikTooltip.textContent = 'Fixed Bone (Translation Disabled)';
+    document.body.appendChild(ikTooltip);
+    
+    function updateTooltip(show, x=0, y=0) {
+        if (show) {
+            ikTooltip.style.left = (x + 15) + 'px';
+            ikTooltip.style.top = (y + 15) + 'px';
+            ikTooltip.style.display = 'block';
+        } else {
+            ikTooltip.style.display = 'none';
+        }
+    }
+
     // ── MOUSEMOVE ──
     window.addEventListener('mousemove', (e) => {
         if (e.target.closest('#sidebar') || e.target.closest('#controls-wrapper') || e.target.closest('#unsaved-modal')) {
@@ -1166,7 +1412,8 @@ if (saveBtn) {
         // ── Rotation ring drag in progress ──
         if (isRotDragging && rotDragAxis && selectedBoneName) {
             const currentAngle = getRotAngle(e, rotDragBoneWorldPos, rotDragAxis);
-            const deltaAngle = currentAngle - rotDragStartAngle;
+            // Invert the angle difference to match clockwise visual dragging
+            const deltaAngle = rotDragStartAngle - currentAngle;
             
             const bone = boneObjects[selectedBoneName];
             if (bone) {
@@ -1175,8 +1422,26 @@ if (saveBtn) {
                     rotDragAxis === 'y' ? 1 : 0,
                     rotDragAxis === 'z' ? 1 : 0
                 );
-                const deltaQ = new THREE.Quaternion().setFromAxisAngle(axisVec, deltaAngle);
-                bone.quaternion.copy(rotDragStartQuat).premultiply(deltaQ);
+                
+                // The visual rings are aligned to the World axes. 
+                // We must apply the rotation delta in World Space, then convert to Local Space.
+                const worldDeltaQ = new THREE.Quaternion().setFromAxisAngle(axisVec, deltaAngle);
+                
+                const parentWorldQ = new THREE.Quaternion();
+                if (bone.parent) {
+                    bone.parent.getWorldQuaternion(parentWorldQ);
+                }
+                
+                // Initial world rotation of the bone = ParentWorld * InitialLocal
+                const startWorldQ = parentWorldQ.clone().multiply(rotDragStartQuat);
+                
+                // Apply world rotation delta: NewWorld = WorldDelta * InitialWorld
+                const newWorldQ = worldDeltaQ.multiply(startWorldQ);
+                
+                // Convert back to local space: NewLocal = Inverse(ParentWorld) * NewWorld
+                const newLocalQ = parentWorldQ.invert().multiply(newWorldQ);
+                
+                bone.quaternion.copy(newLocalQ);
                 
                 persistBoneChange(selectedBoneName);
                 showGizmoAtBone(selectedBoneName);
@@ -1194,11 +1459,21 @@ if (saveBtn) {
             if (innerIKSphere) {
                 const innerIntersects = raycaster.intersectObject(innerIKSphere);
                 if (innerIntersects.length > 0) {
-                    innerIKSphere.material.color.setHex(0xffff00); // Yellow on hover
-                    document.body.style.cursor = 'grab';
-                    return;
+                    const chain = ikChains[selectedBoneName];
+                    const isMovable = chain && chain.length > 1;
+                    
+                    if (isMovable) {
+                        innerIKSphere.material.color.setHex(0xffff00); // Yellow on hover
+                        document.body.style.cursor = 'grab';
+                        updateTooltip(false);
+                        return;
+                    } else {
+                        // Bone is fixed, show tooltip but don't block ring interactions
+                        updateTooltip(true, e.clientX, e.clientY);
+                    }
                 } else {
                     innerIKSphere.material.color.setHex(0xffffff); // Default white
+                    updateTooltip(false);
                 }
             }
 
@@ -1218,31 +1493,31 @@ if (saveBtn) {
             }
         }
         
-        // Check bone hover
-        const boneIntersects = raycaster.intersectObjects(boneHitMeshes, false);
-        
-        if (boneIntersects.length > 0) {
-            const hit = boneIntersects[0].object;
-            if (hoveredBoneHit !== hit) {
-                // Unhover previous
-                if (hoveredBoneHit && hoveredBoneHit.userData.boneName !== selectedBoneName) {
-                    hoveredBoneHit.userData.visibleBone.material.color.setHex(0xffffff);
-                    hoveredBoneHit.userData.visibleBone.material.opacity = 0.3;
+        // Check bone hover (ONLY if no bone is currently selected)
+        if (!selectedBoneName) {
+            const boneIntersects = raycaster.intersectObjects(boneHitMeshes, false);
+            
+            if (boneIntersects.length > 0) {
+                const hit = boneIntersects[0].object;
+                if (hoveredBoneHit !== hit) {
+                    // Unhover previous
+                    if (hoveredBoneHit) {
+                        hoveredBoneHit.userData.boneMat.color.copy(hoveredBoneHit.userData.baseColor);
+                        hoveredBoneHit.userData.boneMat.opacity = getBaseOpacity();
+                    }
+                    hoveredBoneHit = hit;
+                    hoveredBoneHit.userData.boneMat.color.setHex(0xffffff);
+                    hoveredBoneHit.userData.boneMat.opacity = 0.8;
                 }
-                hoveredBoneHit = hit;
-                if (hoveredBoneHit.userData.boneName !== selectedBoneName) {
-                    hoveredBoneHit.userData.visibleBone.material.color.setHex(0x00ff88);
-                    hoveredBoneHit.userData.visibleBone.material.opacity = 0.6;
+                document.body.style.cursor = 'pointer';
+            } else {
+                if (hoveredBoneHit) {
+                    hoveredBoneHit.userData.boneMat.color.copy(hoveredBoneHit.userData.baseColor);
+                    hoveredBoneHit.userData.boneMat.opacity = getBaseOpacity();
                 }
+                hoveredBoneHit = null;
+                document.body.style.cursor = 'default';
             }
-            document.body.style.cursor = 'pointer';
-        } else {
-            if (hoveredBoneHit && hoveredBoneHit.userData.boneName !== selectedBoneName) {
-                hoveredBoneHit.userData.visibleBone.material.color.setHex(0xffffff);
-                hoveredBoneHit.userData.visibleBone.material.opacity = 0.3;
-            }
-            hoveredBoneHit = null;
-            document.body.style.cursor = 'default';
         }
     });
 
@@ -1262,19 +1537,27 @@ if (saveBtn) {
             if (innerIKSphere) {
                 const innerIntersects = raycaster.intersectObject(innerIKSphere);
                 if (innerIntersects.length > 0) {
-                    isDragging = true;
-                    const bone = boneObjects[selectedBoneName];
-                    const originWorldPos = new THREE.Vector3();
-                    bone.getWorldPosition(originWorldPos);
+                    const chain = ikChains[selectedBoneName];
+                    const isMovable = chain && chain.length > 1;
                     
-                    const cameraDir = new THREE.Vector3();
-                    camera.getWorldDirection(cameraDir);
-                    dragPlane.setFromNormalAndCoplanarPoint(cameraDir.negate(), originWorldPos);
-                    
-                    controls.enabled = false;
-                    document.body.style.cursor = 'grabbing';
-                    e.preventDefault();
-                    return;
+                    if (isMovable) {
+                        isDragging = true;
+                        const bone = boneObjects[selectedBoneName];
+                        const length = bone.userData.boneLength || 0.05;
+                        const midLocal = bone.userData.boneVector.clone().multiplyScalar(length / 2);
+                        const midWorldPos = new THREE.Vector3();
+                        bone.localToWorld(midLocal);
+                        midWorldPos.copy(midLocal);
+                        
+                        const cameraDir = new THREE.Vector3();
+                        camera.getWorldDirection(cameraDir);
+                        dragPlane.setFromNormalAndCoplanarPoint(cameraDir.negate(), midWorldPos);
+                        
+                        controls.enabled = false;
+                        document.body.style.cursor = 'grabbing';
+                        e.preventDefault();
+                        return;
+                    }
                 }
             }
 
@@ -1286,7 +1569,11 @@ if (saveBtn) {
                 rotDragAxis = hitRing.userData.axis;
                 
                 const bone = boneObjects[selectedBoneName];
-                bone.getWorldPosition(rotDragBoneWorldPos);
+                const length = bone.userData.boneLength || 0.05;
+                const midLocal = bone.userData.boneVector.clone().multiplyScalar(length / 2);
+                bone.localToWorld(midLocal);
+                rotDragBoneWorldPos.copy(midLocal);
+                
                 rotDragStartQuat.copy(bone.quaternion);
                 rotDragStartAngle = getRotAngle(e, rotDragBoneWorldPos, rotDragAxis);
                 
@@ -1301,13 +1588,17 @@ if (saveBtn) {
         const boneIntersects = raycaster.intersectObjects(boneHitMeshes, false);
         if (boneIntersects.length > 0) {
             const hitMesh = boneIntersects[0].object;
-            selectBone(hitMesh.userData.boneName);
+            
+            if (!selectedBoneName) {
+                // Only select a new bone if nothing is currently selected
+                selectBone(hitMesh.userData.boneName);
+            }
+            
             e.preventDefault();
             return;
         }
         
-        // Clicked empty space → deselect
-        deselectBone();
+        // Clicked empty space → do nothing (forces user to use Deselect button)
     });
 
     // ── MOUSEUP ──
@@ -1323,6 +1614,7 @@ if (saveBtn) {
             rotDragAxis = null;
             controls.enabled = true;
             document.body.style.cursor = 'default';
+            updateTooltip(false); // Hide tooltip if it was accidentally triggered
             
             if (selectedBoneName) {
                 persistBoneChange(selectedBoneName);
@@ -1342,23 +1634,58 @@ if (saveBtn) {
         controls.update();
     }
 
+    document.getElementById('ui-deselect-btn')?.addEventListener('click', deselectBone);
+
     document.getElementById('focus-full')?.addEventListener('click', () => {
-        focusCameraOn(new THREE.Vector3(0, 1, 0), 2.5); // Center of body
+        const leftArm = boneObjects['LeftArm'];
+        const rightArm = boneObjects['RightArm'];
+        if (leftArm && rightArm) {
+            const posL = new THREE.Vector3();
+            const posR = new THREE.Vector3();
+            leftArm.getWorldPosition(posL);
+            rightArm.getWorldPosition(posR);
+            const midPoint = new THREE.Vector3().addVectors(posL, posR).multiplyScalar(0.5);
+            
+            // Explicitly set target and camera position to ensure a slight downward angle
+            // Target slightly below shoulders to center the torso
+            controls.target.set(midPoint.x, midPoint.y - 1.5, midPoint.z);
+            // Zoom out far enough so hands/arms aren't cut off
+            camera.position.set(midPoint.x, midPoint.y - 1.0, midPoint.z + 8.5);
+            controls.update();
+        } else {
+            controls.target.set(0, 1.5, 0);
+            camera.position.set(0, 1.5, 8.5);
+            controls.update();
+        }
     });
 
     document.getElementById('focus-left')?.addEventListener('click', () => {
-        if (boneObjects['LeftHand']) {
+        // Center on the middle knuckle rather than the wrist so fingers are in view
+        const targetBone = boneObjects['LeftHandMiddle2'] || boneObjects['LeftHandMiddle1'] || boneObjects['LeftHand'];
+        if (targetBone) {
             const wp = new THREE.Vector3();
-            boneObjects['LeftHand'].getWorldPosition(wp);
-            focusCameraOn(wp, 0.3); // Zoom in close to hand
+            targetBone.getWorldPosition(wp);
+            
+            // Explicitly set camera position on the OUTSIDE of the left hand
+            // Assuming X is left/right. We push the camera further along the hand's X position.
+            const xOffset = wp.x >= 0 ? 1.5 : -1.5; 
+            camera.position.set(wp.x + xOffset, wp.y + 0.2, wp.z + 1.0);
+            controls.target.copy(wp);
+            controls.update();
         }
     });
 
     document.getElementById('focus-right')?.addEventListener('click', () => {
-        if (boneObjects['RightHand']) {
+        const targetBone = boneObjects['RightHandMiddle2'] || boneObjects['RightHandMiddle1'] || boneObjects['RightHand'];
+        if (targetBone) {
             const wp = new THREE.Vector3();
-            boneObjects['RightHand'].getWorldPosition(wp);
-            focusCameraOn(wp, 0.3); // Zoom in close to hand
+            targetBone.getWorldPosition(wp);
+            
+            // Explicitly set camera position on the OUTSIDE of the right hand
+            const xOffset = wp.x >= 0 ? 1.5 : -1.5;
+            camera.position.set(wp.x + xOffset, wp.y + 0.2, wp.z + 1.0);
+            controls.target.copy(wp);
+            controls.update();
         }
     });
 }
@@ -1387,33 +1714,49 @@ function setupPlayback(numFrames) {
     isDataLoaded = true;
     const slider = document.getElementById('frame-slider');
     const totalDisplay = document.getElementById('total-frames-display');
+    
+    function handleSliderInput(e) {
+        const target = parseInt(e.target.value, 10);
+        if (hasUnsavedChanges) {
+            e.preventDefault();
+            showUnsavedModal(target);
+            e.target.value = currentFrame; 
+            return;
+        }
+        goToFrame(target);
+    }
+    
     if (slider) {
         slider.max = numFrames - 1;
         if (totalDisplay) totalDisplay.textContent = numFrames - 1;
-        
-        slider.addEventListener('input', (e) => {
-            const target = parseInt(e.target.value, 10);
-            if (hasUnsavedChanges) {
-                e.preventDefault();
-                showUnsavedModal(target);
-                slider.value = currentFrame; 
-                return;
-            }
-            goToFrame(target);
-        });
+        slider.addEventListener('input', handleSliderInput);
+    }
+    
+    document.querySelectorAll('.fs-frame-slider').forEach(s => {
+        s.max = numFrames - 1;
+        s.addEventListener('input', handleSliderInput);
+    });
+    
+    document.querySelectorAll('.fs-total-frames-display').forEach(d => {
+        d.textContent = numFrames - 1;
+    });
+    
+    function handlePlayPause() {
+        if (hasUnsavedChanges) {
+            alert("Please save or discard changes before playing.");
+            return;
+        }
+        setPlaying(!isPlaying);
     }
     
     const playBtn = document.getElementById('play-pause-btn');
     if (playBtn) {
-        playBtn.addEventListener('click', () => {
-            if (hasUnsavedChanges) {
-                alert("Please save or discard changes before playing.");
-                return;
-            }
-            isPlaying = !isPlaying;
-            playBtn.textContent = isPlaying ? '⏸' : '▶';
-        });
+        playBtn.addEventListener('click', handlePlayPause);
     }
+    
+    document.querySelectorAll('.fs-play-pause-btn').forEach(btn => {
+        btn.addEventListener('click', handlePlayPause);
+    });
 }
 
 async function loadData() {
@@ -1492,9 +1835,7 @@ function animate() {
                 if (currentFrame < animationFrames.length - 1) {
                     currentFrame++;
                 } else {
-                    isPlaying = false;
-                    const playBtn = document.getElementById('play-pause-btn');
-                    if (playBtn) playBtn.textContent = '▶';
+                    setPlaying(false);
                 }
             }
             
@@ -1506,11 +1847,14 @@ function animate() {
             
             const slider = document.getElementById('frame-slider');
             if (slider) slider.value = currentFrame;
+            document.querySelectorAll('.fs-frame-slider').forEach(s => s.value = currentFrame);
             
             const currDisp = document.getElementById('current-frame-display');
             if (currDisp) currDisp.textContent = currentFrame;
+            document.querySelectorAll('.fs-current-frame-display').forEach(d => d.textContent = currentFrame);
             
             updateUIForSelectedBone();
+            syncVideoToFrame(currentFrame);
         }
     }
 

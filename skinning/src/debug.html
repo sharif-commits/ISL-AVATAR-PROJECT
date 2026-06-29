@@ -14,11 +14,133 @@
             overflow: hidden; /* Prevent scrolling for full screen */
         }
         
-        #avatar-container {
+        #main-view {
             width: calc(100vw - 300px); /* Leave room for sidebar */
             height: 100vh;
             position: relative;
+            display: flex;
+            flex-direction: row;
             background-color: #2a2a2a;
+            transition: width 0.3s ease;
+        }
+        #main-view.collapsed {
+            width: 100vw;
+        }
+
+        #video-wrapper {
+            position: relative;
+            width: 50%;
+            height: calc(100vh - 70px); /* Leave room for bottom controls */
+            background-color: #111;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-right: 1px solid #444;
+        }
+
+        #reference-video {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        #avatar-container {
+            width: 50%;
+            height: calc(100vh - 70px);
+            position: relative;
+            background-color: #2a2a2a;
+        }
+
+        #canvas-wrapper {
+            width: 100%;
+            height: 100%;
+        }
+
+        .fs-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            border: 1px solid #555;
+            border-radius: 4px;
+            width: 32px;
+            height: 32px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            transition: background 0.2s;
+        }
+        .fs-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .fs-controls {
+            display: none;
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            max-width: 600px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            gap: 15px;
+            align-items: center;
+        }
+        :fullscreen .fs-controls {
+            display: flex;
+        }
+        .fs-play-pause-btn {
+            background: none; 
+            border: none; 
+            color: white; 
+            cursor: pointer; 
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+        .fs-play-pause-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .fs-frame-slider {
+            flex-grow: 1; 
+            cursor: pointer;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #555;
+            border-radius: 2px;
+            outline: none;
+        }
+        .fs-frame-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .fs-frame-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        .fs-frame-display {
+            font-size: 14px;
+            font-weight: bold;
+            min-width: 100px;
+            text-align: right;
         }
 
         #controls-wrapper {
@@ -26,6 +148,8 @@
             bottom: 0; 
             left: 0; 
             right: 0; 
+            height: 70px;
+            box-sizing: border-box;
             background: rgba(0,0,0,0.5); 
             padding: 15px 20px; 
             z-index: 1005; 
@@ -90,6 +214,43 @@
             z-index: 1006;
             overflow-y: auto;
             border-left: 1px solid #444;
+            transition: transform 0.3s ease;
+        }
+        #sidebar.collapsed {
+            transform: translateX(100%);
+        }
+        
+        #sidebar-toggle {
+            position: fixed;
+            top: 70px;
+            right: 300px;
+            width: 14px;
+            height: 48px;
+            background: rgba(15, 15, 15, 0.95);
+            color: #aaa;
+            border: 1px solid #444;
+            border-right: none;
+            border-radius: 6px 0 0 6px;
+            cursor: pointer;
+            z-index: 1007;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            transition: right 0.3s ease, transform 0.3s ease, width 0.2s ease, font-size 0.2s ease, color 0.2s ease;
+        }
+        #sidebar-toggle:hover {
+            background: #333;
+            color: white;
+            width: 28px;
+            font-size: 16px;
+        }
+        #sidebar-toggle.collapsed {
+            right: 0;
+            transform: scaleX(-1);
+            border-right: 1px solid #444;
+            border-left: none;
+            border-radius: 0 6px 6px 0;
         }
         .control-group {
             background: rgba(255,255,255,0.05);
@@ -180,22 +341,49 @@
     <script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd.js"></script>
 </head>
 <body>
-    <div id="avatar-container">
-        <div id="canvas-wrapper" style="width: 100%; height: 100%;"></div>
+    <div id="main-view">
+        <div id="video-wrapper">
+            <button id="video-fs-btn" class="fs-btn" title="Fullscreen Video">⛶</button>
+            <video id="reference-video" src="./data/Apple.mp4" muted playsinline></video>
+            <div class="fs-controls">
+                <button class="fs-play-pause-btn" title="Play/Pause">▶</button>
+                <input type="range" class="fs-frame-slider" min="0" max="100" value="0">
+                <div class="fs-frame-display">Frame: <span class="fs-current-frame-display">0</span> / <span class="fs-total-frames-display">0</span></div>
+            </div>
+        </div>
+        <div id="avatar-container">
+            <button id="avatar-fs-btn" class="fs-btn" title="Fullscreen 3D Model">⛶</button>
+            <div id="canvas-wrapper"></div>
+            <div class="fs-controls">
+                <button class="fs-play-pause-btn" title="Play/Pause">▶</button>
+                <input type="range" class="fs-frame-slider" min="0" max="100" value="0">
+                <div class="fs-frame-display">Frame: <span class="fs-current-frame-display">0</span> / <span class="fs-total-frames-display">0</span></div>
+            </div>
+        </div>
         <div id="controls-wrapper">
             <button id="play-pause-btn" title="Play/Pause">▶</button>
             <input type="range" id="frame-slider" min="0" max="100" value="0">
         </div>
     </div>
 
+    <button id="sidebar-toggle">▶</button>
     <div id="sidebar">
         <h2 style="margin-top:0;">Frame <span id="current-frame-display">0</span> / <span id="total-frames-display">0</span></h2>
-        <div style="display:flex; gap: 10px; margin-bottom: 20px;">
+        <div style="display:flex; gap: 10px; margin-bottom: 10px;">
             <button class="btn" id="prev-frame-btn" style="flex:1;">Prev</button>
             <button class="btn" id="next-frame-btn" style="flex:1;">Next</button>
         </div>
+        <button class="btn" id="import-prev-btn" style="width:100%; margin-bottom: 15px; background: #607d8b;">Import Prev Pose</button>
         
-        <h3 style="border-bottom: 1px solid #444; padding-bottom: 10px;">Selected Bone:<br><span id="selected-bone-name" style="color:#4CAF50;">None</span></h3>
+        <div style="display:flex; gap: 10px; margin-bottom: 20px;">
+            <button id="save-frame-btn" class="btn" style="flex:1; background:#4CAF50; padding:10px; font-weight:bold;">Save Current Frame</button>
+            <button id="save-all-btn" class="btn" style="flex:1; background:#2196F3; padding:10px; font-weight:bold;">Save All Changes</button>
+        </div>
+        
+        <h3 style="border-top: 1px solid #444; padding-top: 10px; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <div>Selected Bone:<br><span id="selected-bone-name" style="color:#4CAF50;">None</span></div>
+            <button class="btn" id="ui-deselect-btn" style="display:none; font-size: 12px; padding: 4px 8px; background: #f44336; border:none; margin-top: 10px;">Deselect ✖</button>
+        </h3>
         
         <div class="control-group" style="border-top: 1px solid #444; padding-top: 12px; margin-bottom: 15px;">
             <h4 style="margin-top:0;">Camera Focus</h4>
@@ -206,8 +394,8 @@
             </div>
         </div>
         
-        <div class="control-group">
-            <h4>Rotation (Degrees) <br><small style="font-size:12px; font-weight:normal; color:#aaa;">(Scroll over axis to adjust)</small></h4>
+        <div class="control-group" style="border-top: 1px solid #444; padding-top: 12px;">
+            <h4 style="margin-top:0;">Rotation (Degrees) <br><small style="font-size:12px; font-weight:normal; color:#aaa;">(Scroll over axis to adjust)</small></h4>
             <div class="xyz-row" id="rot-x-row">
                 <span>X: <span id="rot-x-val">0</span>&deg;</span>
                 <div>
@@ -232,27 +420,51 @@
         </div>
 
         <div class="control-group" style="border-top: 1px solid #444; padding-top: 12px; margin-top: 10px;">
-            <h4 style="margin-top:0;">Gizmo Controls</h4>
-            <div style="font-size: 12px; color: #bbb; line-height: 1.8;">
-                <div><span style="display:inline-block;width:12px;height:12px;background:#00ff88;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Hover (green dot)</div>
-                <div><span style="display:inline-block;width:12px;height:12px;background:#ffffff;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Center Dot (IK Drag)</div>
-                <div style="margin-top:6px;"><span style="display:inline-block;width:16px;height:3px;background:#ff4444;margin-right:6px;vertical-align:middle;"></span>X Ring (Red)</div>
-                <div><span style="display:inline-block;width:16px;height:3px;background:#44ff44;margin-right:6px;vertical-align:middle;"></span>Y Ring (Green)</div>
-                <div><span style="display:inline-block;width:16px;height:3px;background:#4488ff;margin-right:6px;vertical-align:middle;"></span>Z Ring (Blue)</div>
-                <div style="margin-top:8px; color:#888; font-style:italic;">
-                    Click bone → Select bone<br>
-                    Drag inner dot → Move (IK)<br>
-                    Drag outer ring → Rotate
-                </div>
-            </div>
+            <h4 style="margin-top:0;">Visibility</h4>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px;">
+                <input type="checkbox" id="always-show-bones" style="cursor: pointer;">
+                Always show all bones
+            </label>
         </div>
 
-        <button id="save-btn">Save Changes to Disk</button>
+        <div class="control-group" style="margin-top: 15px;">
+            <details>
+                <summary style="cursor: pointer; font-weight: bold; font-size: 16px;"><h4 style="display:inline; margin-top:0;">Controls</h4></summary>
+                <div style="padding-left: 10px; margin-top: 10px;">
+                    
+                    <details style="margin-bottom: 10px;">
+                        <summary style="cursor: pointer; font-weight: bold; margin-bottom: 5px; color: #ddd;">Camera</summary>
+                        <div style="font-size: 12px; color: #bbb; line-height: 1.8; margin-top: 5px;">
+                            <div>🖱️ <b>Left Click + Drag:</b> Rotate Camera around target</div>
+                            <div>🖱️ <b>Right Click + Drag:</b> Pan Camera (move on same plane)</div>
+                            <div>🖱️ <b>Scroll Wheel:</b> Zoom In / Out</div>
+                        </div>
+                    </details>
+                    
+                    <details>
+                        <summary style="cursor: pointer; font-weight: bold; margin-bottom: 5px; color: #ddd;">Gizmo</summary>
+                        <div style="font-size: 12px; color: #bbb; line-height: 1.8; margin-top: 5px;">
+                            <div><span style="display:inline-block;width:12px;height:12px;background:#ffffff;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Center Dot (IK Drag)</div>
+                            <div><span style="display:inline-block;width:12px;height:12px;background:#ffff00;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Center Dot Hovered</div>
+                            <div style="margin-top:6px;"><span style="display:inline-block;width:16px;height:3px;background:#ff4444;margin-right:6px;vertical-align:middle;"></span>X Ring (Red)</div>
+                            <div><span style="display:inline-block;width:16px;height:3px;background:#44ff44;margin-right:6px;vertical-align:middle;"></span>Y Ring (Green)</div>
+                            <div><span style="display:inline-block;width:16px;height:3px;background:#4488ff;margin-right:6px;vertical-align:middle;"></span>Z Ring (Blue)</div>
+                            <div style="margin-top:8px; color:#888; font-style:italic;">
+                                Click bone → Select bone<br>
+                                Drag inner dot → Move (IK)<br>
+                                Drag outer ring → Rotate
+                            </div>
+                        </div>
+                    </details>
+                    
+                </div>
+            </details>
+        </div>
     </div>
 
     <div id="unsaved-modal">
         <h3 style="margin-top:0; color:#ff9800;">Unsaved Changes!</h3>
-        <p>You have unsaved tweaks on this frame. Switching frames will lose them. Do you want to save or discard?</p>
+        <p>You have unsaved tweaks on this frame. Switching frames will lose them. Do you want to save to local memory or discard?</p>
         <div style="display:flex; justify-content:flex-end; gap: 15px; margin-top:20px;">
             <button class="btn" id="modal-discard" style="background: #f44336;">Discard</button>
             <button class="btn" id="modal-save" style="background: #4CAF50;">Save</button>
