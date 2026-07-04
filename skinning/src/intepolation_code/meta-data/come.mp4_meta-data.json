@@ -1,0 +1,9 @@
+{
+    "video_name": "come.mp4",
+    "interpolate_start": 48,
+    "interpolate_end": null,
+    "keyframes": [
+        48,
+        57
+    ]
+}
