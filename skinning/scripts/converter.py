@@ -6,8 +6,20 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT_DIR / "src" / "output"
 
 def convert_all():
-    # Find all npz files (both raw and ready)
-    ready_files = list(OUTPUT_DIR.glob("*.npz"))
+    import sys
+    target_file = sys.argv[1] if len(sys.argv) > 1 else None
+
+    # Find npz files matching the filter
+    ready_files = []
+    for f in OUTPUT_DIR.glob("*.npz"):
+        if target_file:
+            if target_file.lower() not in f.name.lower():
+                continue
+        else:
+            # By default, skip _raw files unless specifically requested
+            if "_raw" in f.name:
+                continue
+        ready_files.append(f)
 
     if not ready_files:
         print(f"No .npz files found in {OUTPUT_DIR}")

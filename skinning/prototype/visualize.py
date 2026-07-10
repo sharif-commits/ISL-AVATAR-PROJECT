@@ -46,7 +46,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button, RadioButtons
 
 def get_latest_file():
-    ready_files = list(OUTPUT_DIR.glob("Apple_ready.json"))
+    ready_files = list(OUTPUT_DIR.glob("*_ready.json"))
     if ARGS.file:
         path = Path(ARGS.file)
         if path.exists(): return path

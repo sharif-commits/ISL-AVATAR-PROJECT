@@ -1,0 +1,17 @@
+smplx/
+
+Skeletonization/smplx_models/
+
+skinning/src/output/
+
+skinning/src/videos/
+
+*.pkl
+
+*.npz
+
+* .json
+
+* .mp4
+
+* .zip

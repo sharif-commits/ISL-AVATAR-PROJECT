@@ -96,7 +96,14 @@ def smooth_array(data, fps=30.0, min_cutoff=1.0, beta=0.01, hold_on_missing=True
     return smoothed
 
 def process_data():
-    raw_files = list(OUTPUT_DIR.glob("*_raw.npz"))
+    import sys
+    target_file = sys.argv[1] if len(sys.argv) > 1 else None
+
+    raw_files = []
+    for f in OUTPUT_DIR.glob("*_raw.npz"):
+        if target_file and target_file.lower() not in f.name.lower():
+            continue
+        raw_files.append(f)
 
     if not raw_files:
         print("No raw npz files found to smooth.")
