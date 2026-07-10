@@ -1,0 +1,9 @@
+{
+    "video_name": "see.mp4",
+    "interpolate_start": 34,
+    "interpolate_end": 56,
+    "keyframes": [
+        34,
+        56
+    ]
+}

@@ -26,7 +26,9 @@ scene.add(new THREE.AmbientLight(0xffffff, 1.5));
 const dirLight = new THREE.DirectionalLight(0xffffff, 2);
 dirLight.position.set(5, 5, 5);
 scene.add(dirLight);
-scene.add(new THREE.GridHelper(10, 10, 0x555555, 0x444444));
+if (!window.location.pathname.includes('website.html')) {
+    scene.add(new THREE.GridHelper(10, 10, 0x555555, 0x444444));
+}
 
 
 // ============================================================================
@@ -89,6 +91,11 @@ let manualFrames = [];
 let hasUnsavedChanges = false;
 let fileHandle = null;
 let pendingFrameChange = null;
+let keyframeIndices = null;
+let originalTotalFrames = null;
+
+const urlParams = new URLSearchParams(window.location.search);
+let videoName = urlParams.get('file') || 'Red';
 
 let activeEuler = new THREE.Euler();
 let lastSelectedBoneForEuler = null;
@@ -644,6 +651,9 @@ loader.load('./assets/male2k.glb', (gltf) => {
             depthTest: false 
         });
         const visibleBone = new THREE.Mesh(boneGeo, boneMat);
+        if (window.location.pathname.includes('website.html')) {
+            visibleBone.visible = false;
+        }
 
         if (childBone) {
             const dir = childBone.position.clone().normalize();
@@ -826,7 +836,11 @@ function goToFrame(frameIdx) {
     if (slider) slider.value = currentFrame;
     
     const currDisp = document.getElementById('current-frame-display');
-    if (currDisp) currDisp.textContent = currentFrame;
+    if (currDisp) {
+        currDisp.textContent = (keyframeIndices && keyframeIndices[currentFrame] !== undefined) 
+            ? keyframeIndices[currentFrame] 
+            : currentFrame;
+    }
     
     isPlaying = false;
     const playBtn = document.getElementById('play-pause-btn');
@@ -846,12 +860,12 @@ if (saveBtn) {
     async function saveToDisk(callback) {
         try {
             if (window.showDirectoryPicker && typeof idbKeyval !== 'undefined') {
-                let dirHandle = await idbKeyval.get('outputDir');
+                let dirHandle = await idbKeyval.get('keyframesCorrectedDir');
                 
                 if (!dirHandle) {
-                    alert("Please select the 'output' folder in your project directory. This will allow the app to automatically save the file directly to your repo!");
+                    alert("Please select either the 'skinning' folder, 'src' folder, or 'keyframes_corrected' folder in your project directory. This will allow the app to automatically save corrections directly!");
                     dirHandle = await window.showDirectoryPicker();
-                    await idbKeyval.set('outputDir', dirHandle);
+                    await idbKeyval.set('keyframesCorrectedDir', dirHandle);
                 }
                 
                 if (await dirHandle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
@@ -859,14 +873,44 @@ if (saveBtn) {
                         throw new Error("Permission denied by user.");
                     }
                 }
+
+                // Resolve keyframes_corrected folder
+                let targetDir = dirHandle;
+                try {
+                    // Try root -> skinning -> src -> intepolation_code -> keyframes_corrected
+                    let skinningDir = await dirHandle.getDirectoryHandle('skinning');
+                    let srcDir = await skinningDir.getDirectoryHandle('src');
+                    let interpDir = await srcDir.getDirectoryHandle('intepolation_code');
+                    targetDir = await interpDir.getDirectoryHandle('keyframes_corrected');
+                } catch (err) {
+                    try {
+                        // Try skinning -> src -> intepolation_code -> keyframes_corrected
+                        let srcDir = await dirHandle.getDirectoryHandle('src');
+                        let interpDir = await srcDir.getDirectoryHandle('intepolation_code');
+                        targetDir = await interpDir.getDirectoryHandle('keyframes_corrected');
+                    } catch (err2) {
+                        try {
+                            // Try src -> intepolation_code -> keyframes_corrected
+                            let interpDir = await dirHandle.getDirectoryHandle('intepolation_code');
+                            targetDir = await interpDir.getDirectoryHandle('keyframes_corrected');
+                        } catch (err3) {
+                            try {
+                                // Try intepolation_code -> keyframes_corrected
+                                targetDir = await dirHandle.getDirectoryHandle('keyframes_corrected');
+                            } catch (err4) {
+                                // Fallback: assume the user selected keyframes_corrected directly
+                            }
+                        }
+                    }
+                }
                 
-                const fileHandle = await dirHandle.getFileHandle('Apple_manual.json', { create: true });
+                const fileHandle = await targetDir.getFileHandle(`${videoName}_manual.json`, { create: true });
                 const writable = await fileHandle.createWritable();
                 await writable.write(JSON.stringify({ frames: manualFrames }, null, 2));
                 await writable.close();
                 
                 hasUnsavedChanges = false;
-                alert('Saved directly to your output folder in the repo!');
+                alert('Saved directly to your keyframes_corrected folder!');
                 if (callback) callback();
             } else {
                 throw new Error("Directory API not supported");
@@ -877,13 +921,13 @@ if (saveBtn) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "Apple_manual.json";
+            a.download = `${videoName}_manual.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             hasUnsavedChanges = false;
-            alert('File downloaded to your Downloads folder! Please move it to the output folder.');
+            alert('File downloaded to your Downloads folder! Please move it to skinning/src/intepolation_code/keyframes_corrected/.');
             if (callback) callback();
         }
     }
@@ -965,6 +1009,62 @@ if (saveBtn) {
         if (currentFrame < manualFrames.length - 1) {
             if (hasUnsavedChanges) showUnsavedModal(currentFrame + 1);
             else goToFrame(currentFrame + 1);
+        }
+    });
+
+    document.getElementById('copy-prev-frame-btn')?.addEventListener('click', () => {
+        if (!isManualMode) return;
+        if (currentFrame <= 0) {
+            alert("No previous frame to copy from.");
+            return;
+        }
+        const prevFrameData = manualFrames[currentFrame - 1];
+        const currentFrameData = manualFrames[currentFrame];
+        if (prevFrameData && currentFrameData) {
+            targetBones.forEach(name => {
+                if (prevFrameData[name]) {
+                    currentFrameData[name] = {
+                        position: [...prevFrameData[name].position],
+                        rotation: [...prevFrameData[name].rotation]
+                    };
+                }
+            });
+            hasUnsavedChanges = true;
+            applyManualFrame(currentFrame);
+            updateUIForSelectedBone();
+            alert("Copied pose from previous frame successfully!");
+        }
+    });
+
+    document.getElementById('copy-prev-to-rest-btn')?.addEventListener('click', () => {
+        if (!isManualMode) return;
+        if (currentFrame <= 0) {
+            alert("No previous frame to copy from.");
+            return;
+        }
+        const prevFrameData = manualFrames[currentFrame - 1];
+        if (prevFrameData) {
+            if (!confirm(`Are you sure you want to copy the pose from the previous frame to all frames from frame ${currentFrame} to the end (frame ${manualFrames.length - 1})?`)) {
+                return;
+            }
+            
+            for (let i = currentFrame; i < manualFrames.length; i++) {
+                const targetFrameData = manualFrames[i];
+                if (targetFrameData) {
+                    targetBones.forEach(name => {
+                        if (prevFrameData[name]) {
+                            targetFrameData[name] = {
+                                position: [...prevFrameData[name].position],
+                                rotation: [...prevFrameData[name].rotation]
+                            };
+                        }
+                    });
+                }
+            }
+            hasUnsavedChanges = true;
+            applyManualFrame(currentFrame);
+            updateUIForSelectedBone();
+            alert(`Copied previous pose to all successive frames (frames ${currentFrame} - ${manualFrames.length - 1}) successfully!`);
         }
     });
 
@@ -1389,7 +1489,11 @@ function setupPlayback(numFrames) {
     const totalDisplay = document.getElementById('total-frames-display');
     if (slider) {
         slider.max = numFrames - 1;
-        if (totalDisplay) totalDisplay.textContent = numFrames - 1;
+        if (totalDisplay) {
+            totalDisplay.textContent = (originalTotalFrames !== null) 
+                ? originalTotalFrames - 1 
+                : (keyframeIndices ? keyframeIndices.length - 1 : numFrames - 1);
+        }
         
         slider.addEventListener('input', (e) => {
             const target = parseInt(e.target.value, 10);
@@ -1417,39 +1521,139 @@ function setupPlayback(numFrames) {
 }
 
 async function loadData() {
+    const activeFileEl = document.getElementById('active-file-display');
+    
+    // 0. Try to load directly from keyframes_interp/ first (if the file is an interpolated sentence/file)
     try {
-        const resManual = await fetch('./output/Apple_manual.json');
+        const resInterpFolder = await fetch(`./intepolation_code/keyframes_interp/${videoName}.json`);
+        if (resInterpFolder.ok) {
+            const data = await resInterpFolder.json();
+            manualFrames = data.frames;
+            animationFrames = manualFrames;
+            isManualMode = true;
+            keyframeIndices = null; // Clear keyframe indices to load all frames
+            originalTotalFrames = null;
+            console.log(`Loaded ${manualFrames.length} frames from keyframes_interp.`);
+            if (activeFileEl) {
+                activeFileEl.innerHTML = `${videoName} <span style="font-size:11px; font-weight:normal; padding:2px 6px; border-radius:3px; background:#9C27B0; color:white; margin-left:8px; vertical-align:middle;">Sentence Interp</span>`;
+            }
+            setupPlayback(manualFrames.length);
+            goToFrame(0);
+            return;
+        }
+    } catch(e) {
+        console.warn("Checked keyframes_interp folder, not found or error:", e);
+    }
+    
+    // 1. Try to load keyframe metadata first
+    try {
+        let resMeta = await fetch(`./intepolation_code/meta-data/${videoName}.mp4_meta-data.json`);
+        if (!resMeta.ok) {
+            resMeta = await fetch(`./intepolation_code/meta-data/${videoName}_meta-data.json`);
+        }
+        if (resMeta.ok) {
+            const metaData = await resMeta.json();
+            if (metaData && Array.isArray(metaData.keyframes)) {
+                keyframeIndices = metaData.keyframes;
+                console.log(`Loaded keyframe indices:`, keyframeIndices);
+            }
+        }
+    } catch (e) {
+        console.warn("Could not load keyframe metadata:", e);
+    }
+
+    // 2. Fetch original total frames count (if mediapipe_detections file exists)
+    try {
+        const resDetectionsInfo = await fetch(`./intepolation_code/mediapipe_detections/${videoName}.json`);
+        if (resDetectionsInfo.ok) {
+            const dataInfo = await resDetectionsInfo.json();
+            if (dataInfo && dataInfo.frames) {
+                originalTotalFrames = dataInfo.frames.length;
+                console.log(`Original video total frames: ${originalTotalFrames}`);
+            }
+        }
+    } catch (e) {
+        console.warn("Could not load original total frames count:", e);
+    }
+
+    // 3. Try to load manual correction file from keyframes_corrected/
+    try {
+        const resManual = await fetch(`./intepolation_code/keyframes_corrected/${videoName}_manual.json`);
         if (resManual.ok) {
             const data = await resManual.json();
             manualFrames = data.frames;
             animationFrames = manualFrames; 
             isManualMode = true;
-            console.log(`Loaded ${manualFrames.length} manual frames.`);
+            console.log(`Loaded ${manualFrames.length} manual frames from keyframes_corrected.`);
+            if (activeFileEl) {
+                activeFileEl.innerHTML = `${videoName} <span style="font-size:11px; font-weight:normal; padding:2px 6px; border-radius:3px; background:#4CAF50; color:white; margin-left:8px; vertical-align:middle;">Manual</span>`;
+            }
+            setupPlayback(manualFrames.length);
+            goToFrame(0);
+            return;
+        } else {
+            console.warn(`Could not load manual JSON from keyframes_corrected folder.`);
+        }
+    } catch(e) {
+        console.error("Error fetching/parsing manual JSON:", e);
+    }
+
+    // 4. Try to load original raw IK frames from mediapipe_detections/ and filter by keyframeIndices
+    try {
+        const resDetections = await fetch(`./intepolation_code/mediapipe_detections/${videoName}.json`);
+        if (resDetections.ok) {
+            const data = await resDetections.json();
+            const allFrames = data.frames || [];
+            let filteredFrames = allFrames;
+            if (keyframeIndices) {
+                filteredFrames = keyframeIndices.map(idx => allFrames[idx]).filter(f => f !== undefined);
+                console.log(`Filtered ${filteredFrames.length} keyframes out of ${allFrames.length} total frames from mediapipe_detections.`);
+            } else {
+                console.log(`No keyframe indices found. Loaded all ${allFrames.length} frames from mediapipe_detections.`);
+            }
+            manualFrames = filteredFrames;
+            animationFrames = manualFrames;
+            isManualMode = true;
+            if (activeFileEl) {
+                activeFileEl.innerHTML = `${videoName} <span style="font-size:11px; font-weight:normal; padding:2px 6px; border-radius:3px; background:#ff9800; color:white; margin-left:8px; vertical-align:middle;">Raw (IK)</span>`;
+            }
             setupPlayback(manualFrames.length);
             goToFrame(0);
             return;
         }
-    } catch(e) {}
-    
+    } catch(e) {
+        console.error("Error fetching/parsing mediapipe detections JSON:", e);
+    }
+
+    // 5. Final fallback to output/ready.json if nothing else works
     try {
-        const resReady = await fetch('./output/Apple_ready.json');
+        const resReady = await fetch(`./output/${videoName}_ready.json`);
         if (resReady.ok) {
             const data = await resReady.json();
-            console.log("No manual JSON found. Running IK solver to generate initial frames...");
+            console.log("No keyframe/detections JSON found. Running IK solver on ready JSON...");
+            if (activeFileEl) {
+                activeFileEl.innerHTML = `${videoName} <span style="font-size:11px; font-weight:normal; padding:2px 6px; border-radius:3px; background:#ff9800; color:white; margin-left:8px; vertical-align:middle;">Raw (IK)</span>`;
+            }
             manualFrames = processReadyData(data);
             animationFrames = manualFrames;
             isManualMode = true;
-            console.log(`Generated ${manualFrames.length} manual frames from IK.`);
-            
             setupPlayback(manualFrames.length);
             goToFrame(0);
             
-            if (saveBtn && confirm("IK has generated manual coordinates. Would you like to save this as Apple_manual.json now?")) {
+            if (saveBtn && confirm(`IK has generated manual coordinates. Would you like to save this as ${videoName}_manual.json now?`)) {
                 saveBtn.click();
             }
+        } else {
+            if (activeFileEl) {
+                activeFileEl.innerHTML = `<span style="color:#f44336;">Failed to load any files</span>`;
+            }
+            console.error(`Could not load ready JSON: ./output/${videoName}_ready.json returned status ${resReady.status}`);
         }
     } catch(e) {
         console.error('JSON load error:', e);
+        if (activeFileEl) {
+            activeFileEl.innerHTML = `<span style="color:#f44336;">Error loading data</span>`;
+        }
     }
 }
 // ============================================================================
@@ -1508,7 +1712,11 @@ function animate() {
             if (slider) slider.value = currentFrame;
             
             const currDisp = document.getElementById('current-frame-display');
-            if (currDisp) currDisp.textContent = currentFrame;
+            if (currDisp) {
+                currDisp.textContent = (keyframeIndices && keyframeIndices[currentFrame] !== undefined) 
+                    ? keyframeIndices[currentFrame] 
+                    : currentFrame;
+            }
             
             updateUIForSelectedBone();
         }
@@ -1537,3 +1745,26 @@ function animate() {
 }
 
 animate();
+
+window.loadWebsiteAnimation = async function(fileName, autoPlay = false) {
+    videoName = fileName;
+    isPlaying = false;
+    currentFrame = 0;
+    
+    const activeFileEl = document.getElementById('active-file-display');
+    if (activeFileEl) activeFileEl.textContent = 'Loading...';
+    
+    await loadData();
+    
+    if (autoPlay) {
+        isPlaying = true;
+        const playBtn = document.getElementById('play-pause-btn');
+        if (playBtn) playBtn.textContent = '⏸';
+    }
+};
+
+window.stopWebsitePlayback = function() {
+    isPlaying = false;
+    const playBtn = document.getElementById('play-pause-btn');
+    if (playBtn) playBtn.textContent = '▶';
+};

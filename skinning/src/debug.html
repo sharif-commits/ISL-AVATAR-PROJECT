@@ -189,10 +189,20 @@
     </div>
 
     <div id="sidebar">
+        <div style="margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px;">
+            <span style="font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 1px;">Active Animation</span>
+            <div id="active-file-display" style="font-size: 18px; font-weight: bold; margin-top: 2px;">
+                Loading...
+            </div>
+        </div>
         <h2 style="margin-top:0;">Frame <span id="current-frame-display">0</span> / <span id="total-frames-display">0</span></h2>
-        <div style="display:flex; gap: 10px; margin-bottom: 20px;">
+        <div style="display:flex; gap: 10px; margin-bottom: 10px;">
             <button class="btn" id="prev-frame-btn" style="flex:1;">Prev</button>
             <button class="btn" id="next-frame-btn" style="flex:1;">Next</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap: 8px; margin-bottom: 20px;">
+            <button class="btn" id="copy-prev-frame-btn" style="background: #007aff; border: none; font-weight: bold; padding: 10px;">Copy Prev Pose</button>
+            <button class="btn" id="copy-prev-to-rest-btn" style="background: #17a2b8; border: none; font-weight: bold; padding: 10px;">Copy Prev Pose to All Successive</button>
         </div>
         
         <h3 style="border-bottom: 1px solid #444; padding-bottom: 10px;">Selected Bone:<br><span id="selected-bone-name" style="color:#4CAF50;">None</span></h3>
