@@ -1,17 +1,28 @@
-smplx/
-
-Skeletonization/smplx_models/
-
-skinning/src/output/
-
-skinning/src/videos/
-
+cat > .gitignore << 'EOF'
+# Model weights and large binary assets
+*.pth
+*.pth.tar
 *.pkl
-
 *.npz
 
-* .json
+# Rendered/generated outputs (regenerable, large)
+skinning/output/
+skinning/src/output/
+skinning/src/videos/
+Skeletonization/smplx_models/
 
-* .mp4
+# Dataset frames/videos (large, regenerable or too big for git)
+dataset/Apple/
+*.jpg
+*.mp4
+*.zip
+*.json
 
-* .zip
+# SMPL/SMPL-X model files specifically (redundant safety net)
+smplx/
+**/human_model_files/
+
+# Python
+__pycache__/
+*.pyc
+EOF
