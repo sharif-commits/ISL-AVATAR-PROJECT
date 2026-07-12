@@ -77,7 +77,7 @@ def main():
         # prepare input image
         transform = transforms.ToTensor()
         original_img = load_img(img_path)
-        vis_img = original_img.copy()
+        vis_img = np.full_like(original_img, 40)
         original_img_height, original_img_width = original_img.shape[:2]
         os.makedirs(args.output_folder, exist_ok=True)
 
@@ -158,7 +158,7 @@ def main():
 
             ## render single person mesh
             focal = [cfg.focal[0] / cfg.input_body_shape[1] * bbox[2], cfg.focal[1] / cfg.input_body_shape[0] * bbox[3]]
-            princpt = [cfg.princpt[0] / cfg.input_body_shape[1] * bbox[2] + bbox[0], cfg.princpt[1] / cfg.input_body_shape[0] * bbox[3] + bbox[1]]
+            princpt = [original_img_width / 2, original_img_height / 2]
             vis_img = render_mesh(vis_img, mesh, smpl_x.face, {'focal': focal, 'princpt': princpt}, 
                                   mesh_as_vertices=args.show_verts)
             if args.show_bbox:
