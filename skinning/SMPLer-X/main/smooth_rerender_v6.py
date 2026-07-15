@@ -23,7 +23,7 @@ from scipy.spatial.transform import Rotation as R
 from render import render_pose, smplx_shape
 import pyrender
 
-OUTPUT_FOLDER = '../../output/red_test'   # <-- change per clip
+OUTPUT_FOLDER = '../../output/school_test'   # <-- change per clip
 SMOOTH_WINDOW = 5
 BG_COLOR = (60, 60, 60)
 REFERENCE_JSON = 'reference_stance.json'
