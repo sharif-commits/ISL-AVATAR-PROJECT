@@ -1,0 +1,13 @@
+{
+    "video_name": "White.mp4",
+    "interpolate_start": 42,
+    "interpolate_end": 63,
+    "keyframes": [
+        42,
+        45,
+        50,
+        54,
+        59,
+        63
+    ]
+}

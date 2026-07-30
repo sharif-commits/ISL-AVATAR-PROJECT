@@ -1,0 +1,9 @@
+{
+    "video_name": "Night.mp4",
+    "interpolate_start": 24,
+    "interpolate_end": 35,
+    "keyframes": [
+        24,
+        35
+    ]
+}

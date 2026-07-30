@@ -1,0 +1,11 @@
+{
+    "video_name": "Table.mp4",
+    "interpolate_start": 27,
+    "interpolate_end": 48,
+    "keyframes": [
+        27,
+        34,
+        38,
+        48
+    ]
+}

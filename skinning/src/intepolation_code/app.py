@@ -79,12 +79,12 @@ class VideoAnnotatorApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("ISL Video Frame Interpolation Annotator")
-        self.geometry("1100x700")
+        self.geometry("1100x650")
         self.configure(bg="#121212")
         
         # Paths
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.videos_dir = os.path.join(self.script_dir, "videos")
+        self.videos_dir = os.path.abspath(os.path.join(self.script_dir, "..", "..", "..", "dataset"))
         self.metadata_dir = os.path.join(self.script_dir, "meta-data")
         os.makedirs(self.metadata_dir, exist_ok=True)
         
@@ -200,7 +200,7 @@ class VideoAnnotatorApp(tk.Tk):
 
         # Active File Info Group
         info_grp = tk.LabelFrame(right_frame, text="Active File Info", bg="#121212", fg="#00adb5", font=('Segoe UI', 10, 'bold'), padx=10, pady=10)
-        info_grp.pack(fill="x", pady=(0, 15))
+        info_grp.pack(side="top", fill="x", pady=(0, 10))
         
         self.lbl_active_video = ttk.Label(info_grp, text="Video: None")
         self.lbl_active_video.pack(anchor="w", pady=2)
@@ -211,7 +211,7 @@ class VideoAnnotatorApp(tk.Tk):
 
         # Mark Boundaries Group
         bounds_grp = tk.LabelFrame(right_frame, text="Mark Boundaries", bg="#121212", fg="#00adb5", font=('Segoe UI', 10, 'bold'), padx=10, pady=10)
-        bounds_grp.pack(fill="x", pady=10)
+        bounds_grp.pack(side="top", fill="x", pady=5)
         
         # Style buttons with green/red outlines
         self.btn_mark_start = tk.Button(
@@ -228,9 +228,20 @@ class VideoAnnotatorApp(tk.Tk):
         )
         self.btn_mark_end.pack(fill="x", pady=4)
 
-        # Keyframes annotation Group
+        # Actions Group (Save button) - Packed at the bottom to ensure it remains visible
+        save_grp = tk.Frame(right_frame, bg="#121212")
+        save_grp.pack(side="bottom", fill="x", pady=(10, 0))
+        
+        self.btn_save = tk.Button(
+            save_grp, text="💾 Save Metadata", command=self.save_metadata,
+            bg="#00adb5", fg="#121212", activebackground="#00f0f8", activeforeground="#121212",
+            relief="flat", font=('Segoe UI', 11, 'bold'), pady=10
+        )
+        self.btn_save.pack(fill="x")
+
+        # Keyframes annotation Group - Packed with expand=True to occupy remaining space
         kf_grp = tk.LabelFrame(right_frame, text="Keyframe Annotations", bg="#121212", fg="#00adb5", font=('Segoe UI', 10, 'bold'), padx=10, pady=10)
-        kf_grp.pack(fill="both", expand=True, pady=10)
+        kf_grp.pack(side="top", fill="both", expand=True, pady=5)
 
         self.btn_mark_kf = tk.Button(
             kf_grp, text="🟡 Mark Keyframe", command=self.mark_keyframe,
@@ -243,24 +254,14 @@ class VideoAnnotatorApp(tk.Tk):
         
         self.kf_list = tk.Listbox(
             kf_grp, bg="#181818", fg="#e0e0e0", selectbackground="#00adb5", selectforeground="#121212",
-            highlightcolor="#00adb5", highlightbackground="#333333", bd=0, font=('Segoe UI', 10)
+            highlightcolor="#00adb5", highlightbackground="#333333", bd=0, font=('Segoe UI', 10),
+            height=5
         )
         self.kf_list.pack(fill="both", expand=True, pady=4)
         self.kf_list.bind("<Double-Button-1>", self.jump_to_kf_item)
 
         self.btn_remove_kf = ttk.Button(kf_grp, text="🗑 Remove Selected", command=self.remove_selected_keyframe)
         self.btn_remove_kf.pack(fill="x", pady=4)
-
-        # Actions Group
-        save_grp = tk.Frame(right_frame, bg="#121212")
-        save_grp.pack(fill="x", pady=(15, 0))
-        
-        self.btn_save = tk.Button(
-            save_grp, text="💾 Save Metadata", command=self.save_metadata,
-            bg="#00adb5", fg="#121212", activebackground="#00f0f8", activeforeground="#121212",
-            relief="flat", font=('Segoe UI', 11, 'bold'), pady=10
-        )
-        self.btn_save.pack(fill="x")
 
     def populate_videos(self):
         if not os.path.exists(self.videos_dir):
