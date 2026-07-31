@@ -1,4 +1,3 @@
-cat > .gitignore << 'EOF'
 # Model weights and large binary assets
 *.pth
 *.pth.tar
@@ -16,13 +15,25 @@ dataset/Apple/
 *.jpg
 *.mp4
 *.zip
-*.json
 
-# SMPL/SMPL-X model files specifically (redundant safety net)
+# Static API JSON data for GitHub Pages (Unignored)
+!api/
+!api/*.json
+!api/**/*.json
+!skinning/api/
+!skinning/api/*.json
+!skinning/api/**/*.json
+!package.json
+!package-lock.json
+!skinning/package.json
+!skinning/package-lock.json
+!skinning/src/assets/*.json
+
+# SMPL/SMPL-X model files specifically
 smplx/
 **/human_model_files/
 
-# Python
+# Python & Environment
+.venv/
 __pycache__/
 *.pyc
-EOF
