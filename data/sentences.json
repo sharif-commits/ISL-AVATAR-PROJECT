@@ -1,0 +1,184 @@
+{
+  "sentences": [
+    {
+      "id": 1,
+      "english": "He is coming home",
+      "gloss": "HE HOME COME"
+    },
+    {
+      "id": 2,
+      "english": "He wants to come home",
+      "gloss": "HE HOME COME WANT"
+    },
+    {
+      "id": 3,
+      "english": "He wants to go home",
+      "gloss": "HE HOME GO WANT"
+    },
+    {
+      "id": 4,
+      "english": "He is happy to see me",
+      "gloss": "HE I SEE HAPPY"
+    },
+    {
+      "id": 5,
+      "english": "He wants to see you",
+      "gloss": "HE YOU SEE WANT"
+    },
+    {
+      "id": 6,
+      "english": "He wants to go to the office",
+      "gloss": "HE OFFICE GO WANT"
+    },
+    {
+      "id": 7,
+      "english": "He wants to go to school",
+      "gloss": "HE SCHOOL GO WANT"
+    },
+    {
+      "id": 8,
+      "english": "Hello, he wants to see you",
+      "gloss": "HELLO HE YOU SEE WANT"
+    },
+    {
+      "id": 9,
+      "english": "Hello, I want to see you",
+      "gloss": "HELLO I YOU SEE WANT"
+    },
+    {
+      "id": 10,
+      "english": "I want to see him",
+      "gloss": "I HE SEE WANT"
+    },
+    {
+      "id": 11,
+      "english": "I want to come home",
+      "gloss": "I HOME COME WANT"
+    },
+    {
+      "id": 12,
+      "english": "I am going home",
+      "gloss": "I HOME GO"
+    },
+    {
+      "id": 13,
+      "english": "I want to go home",
+      "gloss": "I HOME GO WANT"
+    },
+    {
+      "id": 14,
+      "english": "I am happy to see you",
+      "gloss": "I YOU SEE HAPPY"
+    },
+    {
+      "id": 15,
+      "english": "I want to see you",
+      "gloss": "I YOU SEE WANT"
+    },
+    {
+      "id": 16,
+      "english": "I want to go to the office",
+      "gloss": "I OFFICE GO WANT"
+    },
+    {
+      "id": 17,
+      "english": "I want to go to school",
+      "gloss": "I SCHOOL GO WANT"
+    },
+    {
+      "id": 18,
+      "english": "He is coming home now",
+      "gloss": "NOW HE HOME COME"
+    },
+    {
+      "id": 19,
+      "english": "He sees me now",
+      "gloss": "NOW HE I SEE"
+    },
+    {
+      "id": 20,
+      "english": "He wants to eat now",
+      "gloss": "NOW HE EAT WANT"
+    },
+    {
+      "id": 21,
+      "english": "He is going to the office now",
+      "gloss": "NOW HE OFFICE GO"
+    },
+    {
+      "id": 22,
+      "english": "He is going to school now",
+      "gloss": "NOW HE SCHOOL GO"
+    },
+    {
+      "id": 23,
+      "english": "Come home now",
+      "gloss": "NOW HOME COME"
+    },
+    {
+      "id": 24,
+      "english": "I see you now",
+      "gloss": "NOW I YOU SEE"
+    },
+    {
+      "id": 25,
+      "english": "I want to eat now",
+      "gloss": "NOW I EAT WANT"
+    },
+    {
+      "id": 26,
+      "english": "I am going to the office now",
+      "gloss": "NOW I OFFICE GO"
+    },
+    {
+      "id": 27,
+      "english": "I am going to school now",
+      "gloss": "NOW I SCHOOL GO"
+    },
+    {
+      "id": 28,
+      "english": "You are happy now",
+      "gloss": "NOW YOU HAPPY"
+    },
+    {
+      "id": 29,
+      "english": "You want to eat now",
+      "gloss": "NOW YOU EAT WANT"
+    },
+    {
+      "id": 30,
+      "english": "Thank you, he is happy",
+      "gloss": "THANK_YOU HE HAPPY"
+    },
+    {
+      "id": 31,
+      "english": "Thank you, I am happy",
+      "gloss": "THANK_YOU I HAPPY"
+    },
+    {
+      "id": 32,
+      "english": "You want to go home",
+      "gloss": "YOU HOME GO WANT"
+    },
+    {
+      "id": 33,
+      "english": "You want to see me",
+      "gloss": "YOU I SEE WANT"
+    },
+    {
+      "id": 34,
+      "english": "You are coming to the office",
+      "gloss": "YOU OFFICE COME"
+    },
+    {
+      "id": 35,
+      "english": "You are going to school",
+      "gloss": "YOU SCHOOL GO"
+    },
+    {
+      "id": 36,
+      "english": "Hello, I want to say thank you",
+      "gloss": "HELLO WANT THANK_YOU"
+    }
+  ]
+}

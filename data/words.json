@@ -1,0 +1,79 @@
+{
+  "words": [
+    {
+      "word": "HE",
+      "slug": "he",
+      "label": "He"
+    },
+    {
+      "word": "HOME",
+      "slug": "home",
+      "label": "Home"
+    },
+    {
+      "word": "COME",
+      "slug": "come",
+      "label": "Come"
+    },
+    {
+      "word": "WANT",
+      "slug": "want",
+      "label": "Want"
+    },
+    {
+      "word": "GO",
+      "slug": "go",
+      "label": "Go"
+    },
+    {
+      "word": "I",
+      "slug": "i",
+      "label": "I"
+    },
+    {
+      "word": "SEE",
+      "slug": "see",
+      "label": "See"
+    },
+    {
+      "word": "HAPPY",
+      "slug": "happy",
+      "label": "Happy"
+    },
+    {
+      "word": "YOU",
+      "slug": "you",
+      "label": "You"
+    },
+    {
+      "word": "OFFICE",
+      "slug": "office",
+      "label": "Office"
+    },
+    {
+      "word": "SCHOOL",
+      "slug": "school",
+      "label": "School"
+    },
+    {
+      "word": "HELLO",
+      "slug": "hello",
+      "label": "Hello"
+    },
+    {
+      "word": "NOW",
+      "slug": "now",
+      "label": "Now"
+    },
+    {
+      "word": "EAT",
+      "slug": "eat",
+      "label": "Eat"
+    },
+    {
+      "word": "THANK_YOU",
+      "slug": "thank_you",
+      "label": "Thank You"
+    }
+  ]
+}

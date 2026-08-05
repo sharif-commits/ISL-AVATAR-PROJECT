@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Sign Dataset — ISL Avatar</title>
+    <style>
+        :root {
+            --bg-dark: #070b14;
+            --navbar-bg: rgba(11, 17, 32, 0.92);
+            --card-bg: #0f172a;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --accent-cyan: #06b6d4;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* the dataset page itself doesn't scroll; the list does */
+        }
+
+        /* Navbar (same as main site) */
+        #navbar {
+            height: 64px;
+            flex-shrink: 0;
+            background: var(--navbar-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+        }
+        .nav-brand { font-size: 1.25rem; font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
+        .nav-brand span { color: var(--accent-cyan); }
+        .nav-links { display: flex; gap: 32px; font-size: 0.9rem; font-weight: 700; }
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.15s ease;
+            padding-bottom: 4px;
+            border-bottom: 2px solid transparent;
+        }
+        .nav-links a:hover { color: var(--text-main); }
+        .nav-links a.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); }
+        .status-badge {
+            background: rgba(6, 182, 212, 0.12);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            color: var(--accent-cyan);
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-cyan); box-shadow: 0 0 12px var(--accent-cyan); }
+
+        /* Page header strip */
+        #page-header {
+            flex-shrink: 0;
+            padding: 22px 40px 18px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        #page-header h1 {
+            margin: 0 0 4px;
+            font-size: 1.4rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #page-header p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Full-bleed dataset layout, fills remaining viewport height */
+        #dataset-layout {
+            flex-grow: 1;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+        }
+        @media (max-width: 850px) {
+            #dataset-layout { grid-template-columns: 1fr; }
+            #dataset-sidebar { max-height: 40vh; }
+        }
+
+        /* Sidebar */
+        #dataset-sidebar {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            background: #0b1120;
+            min-height: 0;
+        }
+        .dataset-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .dataset-tab {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 0.82rem;
+            font-family: inherit;
+            letter-spacing: 0.3px;
+            padding: 14px 8px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: color 0.15s ease, background 0.15s ease;
+        }
+        .dataset-tab.active { color: var(--accent-cyan); border-bottom-color: var(--accent-cyan); background: rgba(6, 182, 212, 0.06); }
+        .dataset-tab:hover { color: #ffffff; }
+
+        .dataset-list {
+            flex-grow: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        .dataset-list::-webkit-scrollbar { width: 6px; }
+        .dataset-list::-webkit-scrollbar-thumb { background: rgba(6, 182, 212, 0.3); border-radius: 4px; }
+        .dataset-empty { color: var(--text-muted); font-size: 0.85rem; padding: 16px 12px; text-align: center; }
+
+        .dataset-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            margin-bottom: 6px;
+            background: rgba(255, 255, 255, 0.02);
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+        .dataset-item:hover { background: rgba(6, 182, 212, 0.08); border-color: rgba(6, 182, 212, 0.25); }
+        .dataset-item.playing { background: rgba(6, 182, 212, 0.16); border-color: rgba(6, 182, 212, 0.45); }
+        .dataset-item-label { font-size: 0.9rem; color: #e6edf7; line-height: 1.4; }
+
+        .dataset-play-icon {
+            flex-shrink: 0;
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--accent-cyan);
+            border: none; color: #0b1120; font-size: 0.78rem; font-weight: bold;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.35);
+            transition: transform 0.15s ease;
+        }
+        .dataset-play-icon:hover { transform: scale(1.1); }
+
+        /* Viewport */
+        #viewport-wrap {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            background: #040711;
+        }
+        #dataset-viewport { flex-grow: 1; position: relative; min-height: 0; }
+
+        #dataset-controls {
+            background: #0f172a;
+            padding: 16px 28px;
+            display: flex; align-items: center; gap: 14px;
+            border-top: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .play-btn {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--accent-cyan);
+            border: none; color: #0b1120; font-size: 1.05rem; font-weight: bold;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+        }
+        #dataset-scrubber { flex-grow: 1; accent-color: var(--accent-cyan); cursor: pointer; height: 5px; }
+        .frame-counter { font-size: 0.78rem; font-family: monospace; color: var(--text-muted); min-width: 64px; text-align: right; }
+
+        .overlay-card {
+            position: absolute; top: 18px; left: 18px; right: 18px;
+            max-width: 420px;
+            background: rgba(11, 17, 32, 0.88);
+            backdrop-filter: blur(10px);
+            padding: 14px 16px;
+            border-radius: 13px;
+            border: 1px solid rgba(255,255,255,0.12);
+            pointer-events: none;
+            z-index: 10;
+        }
+        .overlay-label { font-size: 0.68rem; text-transform: uppercase; color: var(--accent-cyan); font-weight: 700; letter-spacing: 1px; }
+        .overlay-english { font-size: 1.05rem; font-weight: 800; color: #ffffff; margin-top: 3px; line-height: 1.3; }
+        .overlay-gloss-container { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+        .gloss-pill {
+            background: rgba(59, 130, 246, 0.18); border: 1px solid rgba(59, 130, 246, 0.3);
+            color: #93c5fd; padding: 2px 7px; border-radius: 5px; font-size: 0.7rem; font-weight: 700; font-family: monospace;
+        }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./src/assets/vendor/three.module.js",
+          "three/addons/loaders/GLTFLoader.js": "./src/assets/vendor/GLTFLoader.js",
+          "three/addons/controls/OrbitControls.js": "./src/assets/vendor/OrbitControls.js"
+        }
+      }
+    </script>
+</head>
+<body>
+
+    <nav id="navbar">
+        <div class="nav-brand">ISL <span>Avatar</span></div>
+        <div class="nav-links">
+            <a href="index.html#hero">Overview</a>
+            <a href="index.html#guidelines">Guidelines</a>
+            <a href="index.html#translate">Translate</a>
+            <a href="dataset.html" class="active">3D Dataset</a>
+        </div>
+        <div class="status-badge">
+            <div class="status-dot"></div>
+            Dataset Ready
+        </div>
+    </nav>
+
+    <div id="page-header">
+        <h1>📦 ISL 3D Avatar Dataset</h1>
+        <p>Browse every recorded sentence and word directly — these play instantly from pre-generated sign data, no live server needed.</p>
+    </div>
+
+    <div id="dataset-layout">
+        <div id="dataset-sidebar">
+            <div class="dataset-tabs">
+                <button class="dataset-tab active" data-tab="sentences" onclick="switchDatasetTab('sentences')">Sentences</button>
+                <button class="dataset-tab" data-tab="words" onclick="switchDatasetTab('words')">Words</button>
+            </div>
+            <div class="dataset-list" id="dataset-sentence-list">
+                <div class="dataset-empty">Loading sentences…</div>
+            </div>
+            <div class="dataset-list" id="dataset-word-list" style="display: none;">
+                <div class="dataset-empty">Loading words…</div>
+            </div>
+        </div>
+
+        <div id="viewport-wrap">
+            <div id="dataset-viewport">
+                <div id="dataset-canvas-container" style="width: 100%; height: 100%;"></div>
+                <div class="overlay-card">
+                    <div class="overlay-label">Now Signing</div>
+                    <div class="overlay-english" id="dataset-overlay-english">Select an item to play</div>
+                    <div class="overlay-gloss-container" id="dataset-overlay-gloss"></div>
+                </div>
+            </div>
+            <div id="dataset-controls">
+                <button class="play-btn" id="dataset-play-btn">▶</button>
+                <input type="range" id="dataset-scrubber" min="0" max="100" value="0">
+                <span class="frame-counter" id="dataset-frame-counter">0 / 0</span>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Maps precomputed animation bone names to the loaded avatar's rig node names.
+        const BONE_ALIAS = {
+            'LeftArm': 'L_Shoulder', 'LeftForeArm': 'L_Elbow', 'LeftHand': 'L_Wrist',
+            'RightArm': 'R_Shoulder', 'RightForeArm': 'R_Elbow', 'RightHand': 'R_Wrist',
+            'LeftHandThumb1': 'L_Thumb1', 'LeftHandThumb2': 'L_Thumb2', 'LeftHandThumb3': 'L_Thumb3',
+            'LeftHandIndex1': 'L_Index1', 'LeftHandIndex2': 'L_Index2', 'LeftHandIndex3': 'L_Index3',
+            'LeftHandMiddle1': 'L_Middle1', 'LeftHandMiddle2': 'L_Middle2', 'LeftHandMiddle3': 'L_Middle3',
+            'LeftHandRing1': 'L_Ring1', 'LeftHandRing2': 'L_Ring2', 'LeftHandRing3': 'L_Ring3',
+            'LeftHandPinky1': 'L_Pinky1', 'LeftHandPinky2': 'L_Pinky2', 'LeftHandPinky3': 'L_Pinky3',
+            'RightHandThumb1': 'R_Thumb1', 'RightHandThumb2': 'R_Thumb2', 'RightHandThumb3': 'R_Thumb3',
+            'RightHandIndex1': 'R_Index1', 'RightHandIndex2': 'R_Index2', 'RightHandIndex3': 'R_Index3',
+            'RightHandMiddle1': 'R_Middle1', 'RightHandMiddle2': 'R_Middle2', 'RightHandMiddle3': 'R_Middle3',
+            'RightHandRing1': 'R_Ring1', 'RightHandRing2': 'R_Ring2', 'RightHandRing3': 'R_Ring3',
+            'RightHandPinky1': 'R_Pinky1', 'RightHandPinky2': 'R_Pinky2', 'RightHandPinky3': 'R_Pinky3',
+        };
+
+        // 1. Scene Setup
+        const holder = document.getElementById('dataset-canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x040711);
+
+        const camera = new THREE.PerspectiveCamera(45, holder.clientWidth / holder.clientHeight, 0.1, 100);
+        camera.position.set(0, 1.4, 2.6);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(holder.clientWidth, holder.clientHeight);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        holder.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 1.0, 0);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.update();
+
+        scene.add(new THREE.AmbientLight(0xffffff, 1.8));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
+        dirLight.position.set(5, 10, 7);
+        scene.add(dirLight);
+
+        // Placeholder ground plane — resized to the avatar's real scale once it
+        // loads (see below), so it's just a small default until then.
+        let grid = new THREE.GridHelper(4, 20, 0x2dd4f0, 0x1e293b);
+        scene.add(grid);
+        let floor = new THREE.Mesh(
+            new THREE.CircleGeometry(2, 48),
+            new THREE.MeshStandardMaterial({ color: 0x0b1120, roughness: 1 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -0.001;
+        scene.add(floor);
+
+        // 2. Load Avatar
+        const boneObjects = {};
+        let modelLoaded = false;
+
+        // Target height (world units) the avatar is normalized to on load,
+        // regardless of what units the GLB was actually authored/exported in
+        // (meters, centimeters, etc). Scaling the ground plane to match the
+        // GLB's *raw* height (what the previous version did) blew the floor
+        // up to a huge size whenever the raw units weren't ~1 unit-per-meter,
+        // which put its near edge right in front of the camera and occluded
+        // the avatar's legs. Normalizing the avatar itself instead keeps the
+        // grid, floor, and camera math predictable no matter the source file.
+        const TARGET_HEIGHT = 1.75;
+
+        const loader = new GLTFLoader();
+        loader.load('./src/assets/finalclothedmale.glb', (gltf) => {
+            const avatarModel = gltf.scene;
+            scene.add(avatarModel);
+
+            // Measure the raw (as-authored) height first.
+            avatarModel.updateMatrixWorld(true);
+            let box = new THREE.Box3().setFromObject(avatarModel);
+            const rawHeight = box.max.y - box.min.y;
+
+            // Rescale so the avatar is always ~1.75 world units tall.
+            if (rawHeight > 0) {
+                avatarModel.scale.setScalar(TARGET_HEIGHT / rawHeight);
+            }
+
+            // Re-measure after scaling, then ground the feet at exactly y = 0.
+            avatarModel.updateMatrixWorld(true);
+            box = new THREE.Box3().setFromObject(avatarModel);
+            avatarModel.position.y -= box.min.y;
+            avatarModel.updateMatrixWorld(true);
+
+            avatarModel.traverse((child) => { if (child.isBone) boneObjects[child.name] = child; });
+            modelLoaded = true;
+
+            // Now that the avatar is a known, fixed height, the ground plane
+            // and camera can use plain, predictable numbers.
+            const groundSize = TARGET_HEIGHT * 3;
+
+            scene.remove(grid);
+            grid.geometry.dispose();
+            grid = new THREE.GridHelper(groundSize, 20, 0x2dd4f0, 0x1e293b);
+            scene.add(grid);
+
+            scene.remove(floor);
+            floor.geometry.dispose();
+            floor = new THREE.Mesh(
+                new THREE.CircleGeometry(groundSize / 2, 48),
+                new THREE.MeshStandardMaterial({ color: 0x0b1120, roughness: 1 })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -0.001;
+            scene.add(floor);
+
+            controls.target.set(0, TARGET_HEIGHT * 0.55, 0);
+            camera.position.set(0, TARGET_HEIGHT * 0.6, TARGET_HEIGHT * 1.7);
+            controls.update();
+        }, undefined, (err) => {
+            console.error("Could not load the signer model.", err);
+        });
+
+        // 3. Playback Engine
+        let animationFrames = [];
+        let currentFrame = 0;
+        let isPlaying = false;
+        let timeAccum = 0;
+
+        const uiRefs = {
+            playBtn: document.getElementById('dataset-play-btn'),
+            scrubber: document.getElementById('dataset-scrubber'),
+            counter: document.getElementById('dataset-frame-counter'),
+            overlayEnglish: document.getElementById('dataset-overlay-english'),
+            overlayGloss: document.getElementById('dataset-overlay-gloss'),
+        };
+
+        function applyFrame(frameIndex) {
+            const frame = animationFrames[frameIndex];
+            if (!frame) return;
+            Object.keys(frame).forEach(bname => {
+                const targetName = BONE_ALIAS[bname] || bname;
+                const bone = boneObjects[targetName] || boneObjects[bname];
+                if (bone && frame[bname]) {
+                    const q = frame[bname];
+                    if (Array.isArray(q) && q.length === 4) {
+                        const [x, y, z, w] = q;
+                        bone.quaternion.set(x, y, z, w);
+                    }
+                }
+            });
+        }
+
+        function updateOverlay(english, gloss) {
+            uiRefs.overlayEnglish.textContent = english || '—';
+            uiRefs.overlayGloss.innerHTML = (gloss || '')
+                .split(' ')
+                .filter(Boolean)
+                .map(g => `<span class="gloss-pill">${g}</span>`)
+                .join('');
+        }
+
+        function resizeRendererToContainer(el) {
+            const w = el.clientWidth, h = el.clientHeight;
+            if (!w || !h) return;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        }
+
+        function playAnimationData(data) {
+            animationFrames = data.frames;
+            currentFrame = 0;
+            timeAccum = 0;
+
+            uiRefs.scrubber.max = data.total_frames - 1;
+            uiRefs.scrubber.value = 0;
+            uiRefs.counter.textContent = `1 / ${data.total_frames}`;
+            updateOverlay(data.english || data.label || '', data.gloss || '');
+
+            applyFrame(0);
+            startPlayback();
+        }
+
+        function startPlayback() { if (animationFrames.length) isPlaying = true; uiRefs.playBtn.textContent = '⏸'; }
+        function stopPlayback() { isPlaying = false; uiRefs.playBtn.textContent = '▶'; }
+
+        uiRefs.playBtn.addEventListener('click', () => { isPlaying ? stopPlayback() : startPlayback(); });
+
+        uiRefs.scrubber.addEventListener('input', (e) => {
+            if (!animationFrames.length) return;
+            stopPlayback();
+            currentFrame = parseInt(e.target.value);
+            applyFrame(currentFrame);
+            uiRefs.counter.textContent = `${currentFrame + 1} / ${animationFrames.length}`;
+        });
+
+        // 4. Dataset browsing — pre-recorded STATIC json, no live server required.
+        // These files are produced ahead of time by generate_static_dataset.py
+        // (which itself just calls the same, untouched interpolate_sentence()).
+        async function playDatasetItem(kind, key, rowEl) {
+            stopPlayback();
+
+            document.querySelectorAll('.dataset-item.playing').forEach(el => el.classList.remove('playing'));
+            if (rowEl) rowEl.classList.add('playing');
+
+            const url = kind === 'sentence' ? `data/sentences/${key}.json` : `data/words/${key}.json`;
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`${url} not found (${res.status})`);
+                const data = await res.json();
+                if (data.success && data.frames && data.frames.length > 0) {
+                    playAnimationData(data);
+                } else {
+                    console.error('Static dataset file had no frames:', url);
+                }
+            } catch (e) {
+                console.error('Could not load static dataset file:', url, e);
+                updateOverlay('Could not load this sign', '');
+            }
+        }
+        window.playDatasetItem = playDatasetItem;
+
+        function switchDatasetTab(tab) {
+            document.querySelectorAll('.dataset-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tab));
+            document.getElementById('dataset-sentence-list').style.display = tab === 'sentences' ? 'block' : 'none';
+            document.getElementById('dataset-word-list').style.display = tab === 'words' ? 'block' : 'none';
+        }
+        window.switchDatasetTab = switchDatasetTab;
+
+        function renderDatasetList(containerId, items, kind) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!items || items.length === 0) {
+                el.innerHTML = `<div class="dataset-empty">No ${kind}s found. Run generate_static_dataset.py first.</div>`;
+                return;
+            }
+            el.innerHTML = '';
+            items.forEach(item => {
+                const key = kind === 'sentence' ? item.id : item.slug;
+                const label = kind === 'sentence' ? item.english : item.label;
+
+                const row = document.createElement('div');
+                row.className = 'dataset-item';
+
+                const labelSpan = document.createElement('span');
+                labelSpan.className = 'dataset-item-label';
+                labelSpan.textContent = label;
+
+                const playBtn = document.createElement('button');
+                playBtn.className = 'dataset-play-icon';
+                playBtn.title = 'Play';
+                playBtn.textContent = '▶';
+                playBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    playDatasetItem(kind, key, row);
+                });
+
+                row.appendChild(labelSpan);
+                row.appendChild(playBtn);
+                row.addEventListener('click', () => playDatasetItem(kind, key, row));
+
+                el.appendChild(row);
+            });
+        }
+
+        async function loadDatasetLists() {
+            try {
+                const sRes = await fetch('data/sentences.json');
+                if (sRes.ok) {
+                    const sData = await sRes.json();
+                    renderDatasetList('dataset-sentence-list', sData.sentences, 'sentence');
+                } else {
+                    renderDatasetList('dataset-sentence-list', [], 'sentence');
+                }
+            } catch (e) {
+                renderDatasetList('dataset-sentence-list', [], 'sentence');
+            }
+
+            try {
+                const wRes = await fetch('data/words.json');
+                if (wRes.ok) {
+                    const wData = await wRes.json();
+                    renderDatasetList('dataset-word-list', wData.words, 'word');
+                } else {
+                    renderDatasetList('dataset-word-list', [], 'word');
+                }
+            } catch (e) {
+                renderDatasetList('dataset-word-list', [], 'word');
+            }
+        }
+
+        // 5. Render Loop
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            if (modelLoaded && isPlaying && animationFrames.length) {
+                timeAccum += dt;
+                const frameDur = 1 / 30;
+                if (timeAccum >= frameDur) {
+                    timeAccum -= frameDur;
+                    if (currentFrame < animationFrames.length - 1) {
+                        currentFrame++;
+                        applyFrame(currentFrame);
+                        uiRefs.scrubber.value = currentFrame;
+                        uiRefs.counter.textContent = `${currentFrame + 1} / ${animationFrames.length}`;
+                    } else {
+                        stopPlayback();
+                    }
+                }
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => resizeRendererToContainer(holder));
+
+        loadDatasetLists();
+    </script>
+</body>
+</html>
