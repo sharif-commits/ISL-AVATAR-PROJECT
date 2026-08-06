@@ -208,7 +208,6 @@
         #widget-container.minimized { height: 56px; }
         #widget-container.minimized #widget-viewport,
         #widget-container.minimized #widget-controls { display: none; }
-        #widget-container.expanded { width: 400px; height: 560px; }
 
         #widget-header {
             background: #0f172a;
@@ -217,7 +216,9 @@
             user-select: none;
             border-bottom: 1px solid var(--border-color);
             flex-shrink: 0;
+            cursor: grab;
         }
+        #widget-header:active { cursor: grabbing; }
         .widget-title { font-size: 0.86rem; font-weight: 700; color: var(--accent-cyan); display: flex; align-items: center; gap: 8px; }
         .widget-header-actions { display: flex; gap: 6px; }
         .widget-icon-btn {
@@ -286,6 +287,7 @@
             <a href="#hero" class="active">Overview</a>
             <a href="#guidelines">Guidelines</a>
             <a href="#translate">Translate</a>
+            <a href="dataset.html">3D Dataset</a>
         </div>
         <div class="status-badge">
             <div class="status-dot"></div>
@@ -362,7 +364,6 @@
         <div id="widget-header">
             <span class="widget-title">🎥 3D Avatar Widget</span>
             <div class="widget-header-actions">
-                <button class="widget-icon-btn" id="expand-btn" title="Expand">⛶</button>
                 <button class="widget-icon-btn" id="minimize-btn" title="Minimize">–</button>
                 <button class="widget-icon-btn" id="close-btn" title="Close">✕</button>
             </div>
@@ -399,17 +400,17 @@
         };
 
         // 1. Scene Setup
-        const container = document.getElementById('canvas-container');
+        const holder = document.getElementById('canvas-container');
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x040711);
 
-        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        const camera = new THREE.PerspectiveCamera(45, holder.clientWidth / holder.clientHeight, 0.1, 100);
         camera.position.set(0, 1.4, 2.6);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setSize(holder.clientWidth, holder.clientHeight);
         renderer.outputColorSpace = THREE.SRGBColorSpace;
-        container.appendChild(renderer.domElement);
+        holder.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.target.set(0, 1.0, 0);
@@ -421,11 +422,14 @@
         const dirLight = new THREE.DirectionalLight(0xffffff, 2.2);
         dirLight.position.set(5, 10, 7);
         scene.add(dirLight);
-        const grid = new THREE.GridHelper(4, 20, 0x2dd4f0, 0x1e293b);
+
+        // Placeholder ground plane — resized to the avatar's real scale once it
+        // loads (see below), so it's just a small default until then.
+        let grid = new THREE.GridHelper(4, 20, 0x2dd4f0, 0x1e293b);
         scene.add(grid);
-        const floor = new THREE.Mesh(
-        new THREE.CircleGeometry(2, 48),
-        new THREE.MeshStandardMaterial({ color: 0x0b1120, roughness: 1 })
+        let floor = new THREE.Mesh(
+            new THREE.CircleGeometry(2, 48),
+            new THREE.MeshStandardMaterial({ color: 0x0b1120, roughness: 1 })
         );
         floor.rotation.x = -Math.PI / 2;
         floor.position.y = -0.001;
@@ -436,23 +440,61 @@
         const boneObjects = {};
         let modelLoaded = false;
 
+        // Target height (world units) the avatar is normalized to on load,
+        // regardless of what units the GLB was actually authored/exported in
+        // (meters, centimeters, etc). Scaling the ground plane to match the
+        // GLB's *raw* height (what the previous version did) blew the floor
+        // up to a huge size whenever the raw units weren't ~1 unit-per-meter,
+        // which put its near edge right in front of the camera and occluded
+        // the avatar's legs. Normalizing the avatar itself instead keeps the
+        // grid, floor, and camera math predictable no matter the source file.
+        const TARGET_HEIGHT = 1.75;
+
         const loader = new GLTFLoader();
-        loader.load('./src/assets/male2k_smplx.glb', (gltf) => {
+        loader.load('./src/assets/finalclothedmale.glb', (gltf) => {
             const avatarModel = gltf.scene;
             scene.add(avatarModel);
 
-            // Ground the model: shift it so its lowest point (feet) sits exactly at y = 0,
-            // regardless of where the GLB's root/pelvis is authored relative to origin.
-            const box = new THREE.Box3().setFromObject(avatarModel);
+            // Measure the raw (as-authored) height first.
+            avatarModel.updateMatrixWorld(true);
+            let box = new THREE.Box3().setFromObject(avatarModel);
+            const rawHeight = box.max.y - box.min.y;
+
+            // Rescale so the avatar is always ~1.75 world units tall.
+            if (rawHeight > 0) {
+                avatarModel.scale.setScalar(TARGET_HEIGHT / rawHeight);
+            }
+
+            // Re-measure after scaling, then ground the feet at exactly y = 0.
+            avatarModel.updateMatrixWorld(true);
+            box = new THREE.Box3().setFromObject(avatarModel);
             avatarModel.position.y -= box.min.y;
+            avatarModel.updateMatrixWorld(true);
 
             avatarModel.traverse((child) => { if (child.isBone) boneObjects[child.name] = child; });
             modelLoaded = true;
 
-            // Re-frame the camera now that we know the model's real height
-            const height = box.max.y - box.min.y;
-            controls.target.set(0, height * 0.55, 0);
-            camera.position.set(0, height * 0.6, height * 1.6);
+            // Now that the avatar is a known, fixed height, the ground plane
+            // and camera can use plain, predictable numbers.
+            const groundSize = TARGET_HEIGHT * 3;
+
+            scene.remove(grid);
+            grid.geometry.dispose();
+            grid = new THREE.GridHelper(groundSize, 20, 0x2dd4f0, 0x1e293b);
+            scene.add(grid);
+
+            scene.remove(floor);
+            floor.geometry.dispose();
+            floor = new THREE.Mesh(
+                new THREE.CircleGeometry(groundSize / 2, 48),
+                new THREE.MeshStandardMaterial({ color: 0x0b1120, roughness: 1 })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -0.001;
+            scene.add(floor);
+
+            controls.target.set(0, TARGET_HEIGHT * 0.55, 0);
+            camera.position.set(0, TARGET_HEIGHT * 0.6, TARGET_HEIGHT * 1.7);
             controls.update();
         }, undefined, (err) => {
             console.error("Could not load the signer model.", err);
@@ -464,9 +506,13 @@
         let isPlaying = false;
         let timeAccum = 0;
 
-        const playBtn = document.getElementById('widget-play-btn');
-        const scrubber = document.getElementById('scrubber');
-        const counterEl = document.getElementById('frame-counter');
+        const uiRefs = {
+            playBtn: document.getElementById('widget-play-btn'),
+            scrubber: document.getElementById('scrubber'),
+            counter: document.getElementById('frame-counter'),
+            overlayEnglish: document.getElementById('widget-overlay-english'),
+            overlayGloss: document.getElementById('widget-overlay-gloss'),
+        };
 
         function applyFrame(frameIndex) {
             const frame = animationFrames[frameIndex];
@@ -484,8 +530,42 @@
             });
         }
 
-        // 4. Floating widget open/close/minimize/expand behavior
+        function updateOverlay(english, gloss) {
+            if (uiRefs.overlayEnglish) uiRefs.overlayEnglish.textContent = english || '—';
+            if (uiRefs.overlayGloss) {
+                uiRefs.overlayGloss.innerHTML = (gloss || '')
+                    .split(' ')
+                    .filter(Boolean)
+                    .map(g => `<span class="gloss-pill">${g}</span>`)
+                    .join('');
+            }
+        }
+
+        function resizeRendererToContainer(el) {
+            const w = el.clientWidth, h = el.clientHeight;
+            if (!w || !h) return;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        }
+
+        function playAnimationData(data) {
+            animationFrames = data.frames;
+            currentFrame = 0;
+            timeAccum = 0;
+
+            uiRefs.scrubber.max = data.total_frames - 1;
+            uiRefs.scrubber.value = 0;
+            uiRefs.counter.textContent = `1 / ${data.total_frames}`;
+            updateOverlay(data.english || data.label || '', data.gloss || '');
+
+            applyFrame(0);
+            startPlayback();
+        }
+
+        // 4. Floating & draggable widget open/close/minimize behavior
         const widget = document.getElementById('widget-container');
+        const widgetHeader = document.getElementById('widget-header');
         const bubble = document.getElementById('avatar-bubble');
         bubble.classList.add('hidden'); // widget starts open by default
 
@@ -500,12 +580,80 @@
         }
         document.getElementById('close-btn').addEventListener('click', closeWidget);
         document.getElementById('minimize-btn').addEventListener('click', () => widget.classList.toggle('minimized'));
-        document.getElementById('expand-btn').addEventListener('click', () => widget.classList.toggle('expanded'));
         bubble.addEventListener('click', openWidget);
         openWidget();
 
+        // Drag functionality for floating widget
+        let isDragging = false;
+        let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
+
+        function startDrag(clientX, clientY) {
+            isDragging = true;
+            widgetHeader.style.cursor = 'grabbing';
+            const rect = widget.getBoundingClientRect();
+            widget.style.bottom = 'auto';
+            widget.style.right = 'auto';
+            widget.style.left = `${rect.left}px`;
+            widget.style.top = `${rect.top}px`;
+            startX = clientX;
+            startY = clientY;
+            initialLeft = rect.left;
+            initialTop = rect.top;
+        }
+
+        function moveDrag(clientX, clientY) {
+            if (!isDragging) return;
+            const dx = clientX - startX;
+            const dy = clientY - startY;
+            let newLeft = initialLeft + dx;
+            let newTop = initialTop + dy;
+
+            const maxLeft = window.innerWidth - widget.offsetWidth;
+            const maxTop = window.innerHeight - widget.offsetHeight;
+            newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+            newTop = Math.max(0, Math.min(newTop, maxTop));
+
+            widget.style.left = `${newLeft}px`;
+            widget.style.top = `${newTop}px`;
+        }
+
+        function stopDrag() {
+            if (isDragging) {
+                isDragging = false;
+                widgetHeader.style.cursor = 'grab';
+            }
+        }
+
+        widgetHeader.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.widget-icon-btn')) return;
+            startDrag(e.clientX, e.clientY);
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                moveDrag(e.clientX, e.clientY);
+            }
+        });
+        document.addEventListener('mouseup', stopDrag);
+
+        widgetHeader.addEventListener('touchstart', (e) => {
+            if (e.target.closest('.widget-icon-btn')) return;
+            const touch = e.touches[0];
+            startDrag(touch.clientX, touch.clientY);
+        }, { passive: true });
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging && e.touches.length > 0) {
+                const touch = e.touches[0];
+                moveDrag(touch.clientX, touch.clientY);
+            }
+        }, { passive: true });
+        document.addEventListener('touchend', stopDrag);
+
         let activeSpan = null;
 
+        // ===== Translate tab: select-a-sentence -> LIVE server-side interpolation =====
+        // Still hits /api/translate, which is backed by live_interpolator.py doing
+        // real-time NPZ -> SLERP -> quaternion work.
         async function triggerSentenceAnimation(id) {
             stopPlayback();
             openWidget();
@@ -522,7 +670,7 @@
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success && data.frames && data.frames.length > 0) {
-                        playSentenceData(data);
+                        playAnimationData(data);
                         return;
                     }
                 }
@@ -532,7 +680,7 @@
                     if (response.ok) {
                         const data = await response.json();
                         if (data.success && data.frames && data.frames.length > 0) {
-                            playSentenceData(data);
+                            playAnimationData(data);
                             return;
                         }
                     }
@@ -543,31 +691,19 @@
         }
         window.triggerSentenceAnimation = triggerSentenceAnimation;
 
-        function playSentenceData(data) {
-            animationFrames = data.frames;
-            currentFrame = 0;
-            timeAccum = 0;
+        function startPlayback() { if (animationFrames.length) isPlaying = true; uiRefs.playBtn.textContent = '⏸'; }
+        function stopPlayback() { isPlaying = false; if (uiRefs && uiRefs.playBtn) uiRefs.playBtn.textContent = '▶'; }
 
-            scrubber.max = data.total_frames - 1;
-            scrubber.value = 0;
-            counterEl.textContent = `1 / ${data.total_frames}`;
+        uiRefs.playBtn.addEventListener('click', () => { isPlaying ? stopPlayback() : startPlayback(); });
 
-            applyFrame(0);
-            startPlayback();
-        }
-
-        function startPlayback() { if (animationFrames.length) isPlaying = true; playBtn.textContent = '⏸'; }
-        function stopPlayback() { isPlaying = false; playBtn.textContent = '▶'; }
-
-        playBtn.addEventListener('click', () => { isPlaying ? stopPlayback() : startPlayback(); });
-
-        scrubber.addEventListener('input', (e) => {
+        function handleScrub(e) {
             if (!animationFrames.length) return;
             stopPlayback();
             currentFrame = parseInt(e.target.value);
             applyFrame(currentFrame);
-            counterEl.textContent = `${currentFrame + 1} / ${animationFrames.length}`;
-        });
+            uiRefs.counter.textContent = `${currentFrame + 1} / ${animationFrames.length}`;
+        }
+        uiRefs.scrubber.addEventListener('input', handleScrub);
 
         // 5. Render Loop
         const clock = new THREE.Clock();
@@ -582,8 +718,8 @@
                     if (currentFrame < animationFrames.length - 1) {
                         currentFrame++;
                         applyFrame(currentFrame);
-                        scrubber.value = currentFrame;
-                        counterEl.textContent = `${currentFrame + 1} / ${animationFrames.length}`;
+                        uiRefs.scrubber.value = currentFrame;
+                        uiRefs.counter.textContent = `${currentFrame + 1} / ${animationFrames.length}`;
                     } else {
                         stopPlayback();
                     }
@@ -594,11 +730,7 @@
         }
         animate();
 
-        window.addEventListener('resize', () => {
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        });
+        window.addEventListener('resize', () => resizeRendererToContainer(holder));
 
         // 6. Reading Panel — group sentences into readable paragraphs, footnote-numbered
         const SECTION_GROUPS = [
@@ -698,7 +830,11 @@
             sections.forEach(sec => {
                 if (window.scrollY + 100 >= sec.offsetTop) current = sec.id;
             });
-            navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#${current}`));
+            navLinks.forEach(a => {
+                const href = a.getAttribute('href');
+                if (href.startsWith('#')) a.classList.toggle('active', href === `#${current}`);
+                else a.classList.remove('active');
+            });
         });
 
         loadReadingPanel();

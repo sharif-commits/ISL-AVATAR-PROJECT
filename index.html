@@ -208,7 +208,6 @@
         #widget-container.minimized { height: 56px; }
         #widget-container.minimized #widget-viewport,
         #widget-container.minimized #widget-controls { display: none; }
-        #widget-container.expanded { width: 400px; height: 560px; }
 
         #widget-header {
             background: #0f172a;
@@ -217,7 +216,9 @@
             user-select: none;
             border-bottom: 1px solid var(--border-color);
             flex-shrink: 0;
+            cursor: grab;
         }
+        #widget-header:active { cursor: grabbing; }
         .widget-title { font-size: 0.86rem; font-weight: 700; color: var(--accent-cyan); display: flex; align-items: center; gap: 8px; }
         .widget-header-actions { display: flex; gap: 6px; }
         .widget-icon-btn {
@@ -363,18 +364,12 @@
         <div id="widget-header">
             <span class="widget-title">🎥 3D Avatar Widget</span>
             <div class="widget-header-actions">
-                <button class="widget-icon-btn" id="expand-btn" title="Expand">⛶</button>
                 <button class="widget-icon-btn" id="minimize-btn" title="Minimize">–</button>
                 <button class="widget-icon-btn" id="close-btn" title="Close">✕</button>
             </div>
         </div>
         <div id="widget-viewport">
             <div id="canvas-container" style="width: 100%; height: 100%;"></div>
-            <div class="overlay-card">
-                <div class="overlay-label">Now Signing</div>
-                <div class="overlay-english" id="widget-overlay-english">—</div>
-                <div class="overlay-gloss-container" id="widget-overlay-gloss"></div>
-            </div>
         </div>
         <div id="widget-controls">
             <button class="play-btn" id="widget-play-btn">▶</button>
@@ -568,8 +563,9 @@
             startPlayback();
         }
 
-        // 4. Floating widget open/close/minimize/expand behavior
+        // 4. Floating & draggable widget open/close/minimize behavior
         const widget = document.getElementById('widget-container');
+        const widgetHeader = document.getElementById('widget-header');
         const bubble = document.getElementById('avatar-bubble');
         bubble.classList.add('hidden'); // widget starts open by default
 
@@ -584,9 +580,74 @@
         }
         document.getElementById('close-btn').addEventListener('click', closeWidget);
         document.getElementById('minimize-btn').addEventListener('click', () => widget.classList.toggle('minimized'));
-        document.getElementById('expand-btn').addEventListener('click', () => widget.classList.toggle('expanded'));
         bubble.addEventListener('click', openWidget);
         openWidget();
+
+        // Drag functionality for floating widget
+        let isDragging = false;
+        let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
+
+        function startDrag(clientX, clientY) {
+            isDragging = true;
+            widgetHeader.style.cursor = 'grabbing';
+            const rect = widget.getBoundingClientRect();
+            widget.style.bottom = 'auto';
+            widget.style.right = 'auto';
+            widget.style.left = `${rect.left}px`;
+            widget.style.top = `${rect.top}px`;
+            startX = clientX;
+            startY = clientY;
+            initialLeft = rect.left;
+            initialTop = rect.top;
+        }
+
+        function moveDrag(clientX, clientY) {
+            if (!isDragging) return;
+            const dx = clientX - startX;
+            const dy = clientY - startY;
+            let newLeft = initialLeft + dx;
+            let newTop = initialTop + dy;
+
+            const maxLeft = window.innerWidth - widget.offsetWidth;
+            const maxTop = window.innerHeight - widget.offsetHeight;
+            newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+            newTop = Math.max(0, Math.min(newTop, maxTop));
+
+            widget.style.left = `${newLeft}px`;
+            widget.style.top = `${newTop}px`;
+        }
+
+        function stopDrag() {
+            if (isDragging) {
+                isDragging = false;
+                widgetHeader.style.cursor = 'grab';
+            }
+        }
+
+        widgetHeader.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.widget-icon-btn')) return;
+            startDrag(e.clientX, e.clientY);
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                moveDrag(e.clientX, e.clientY);
+            }
+        });
+        document.addEventListener('mouseup', stopDrag);
+
+        widgetHeader.addEventListener('touchstart', (e) => {
+            if (e.target.closest('.widget-icon-btn')) return;
+            const touch = e.touches[0];
+            startDrag(touch.clientX, touch.clientY);
+        }, { passive: true });
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging && e.touches.length > 0) {
+                const touch = e.touches[0];
+                moveDrag(touch.clientX, touch.clientY);
+            }
+        }, { passive: true });
+        document.addEventListener('touchend', stopDrag);
 
         let activeSpan = null;
 
