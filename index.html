@@ -267,6 +267,77 @@
             color: #93c5fd; padding: 2px 7px; border-radius: 5px; font-size: 0.68rem; font-weight: 700; font-family: monospace;
         }
         .status-line { font-size: 0.68rem; color: var(--accent-green); margin-top: 7px; font-weight: 600; }
+
+        /* Responsive Breakpoints (Monitors, Laptops, Tablets, Mobile Phones) */
+        @media (max-width: 1200px) {
+            #main-container { max-width: 1000px; }
+        }
+
+        @media (max-width: 1024px) {
+            #navbar { padding: 0 24px; }
+            .nav-links { gap: 20px; font-size: 0.86rem; }
+            #hero { margin: 50px auto 36px; padding: 0 24px; }
+            .hero-title { font-size: 2.2rem; }
+            #main-container { padding: 0 24px; margin-bottom: 60px; }
+            #widget-container {
+                width: 310px;
+                height: 440px;
+                max-width: calc(100vw - 32px);
+                max-height: calc(100vh - 40px);
+            }
+        }
+
+        @media (max-width: 768px) {
+            #navbar { padding: 0 16px; height: 56px; }
+            .nav-brand { font-size: 1.1rem; }
+            .nav-links { gap: 12px; font-size: 0.78rem; }
+            .status-badge { display: none; }
+
+            #hero { margin: 32px auto 24px; padding: 0 16px; }
+            .hero-title { font-size: 1.7rem; margin-bottom: 12px; }
+            .hero-subtitle { font-size: 0.92rem; line-height: 1.6; }
+
+            #main-container { padding: 0 16px; margin-bottom: 40px; }
+            .two-col { grid-template-columns: 1fr; gap: 20px; }
+            .panel-card { padding: 20px 18px; border-radius: 16px; }
+            .panel-card h2 { font-size: 1.15rem; margin-bottom: 14px; }
+
+            #widget-container {
+                width: calc(100vw - 32px);
+                max-width: 340px;
+                height: min(440px, 60vh);
+                bottom: 16px;
+                right: 16px;
+                border-radius: 16px;
+            }
+            #avatar-bubble {
+                width: 52px;
+                height: 52px;
+                bottom: 16px;
+                right: 16px;
+                font-size: 1.25rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            #navbar { padding: 0 12px; }
+            .nav-brand { font-size: 1rem; }
+            .nav-links { gap: 8px; font-size: 0.74rem; }
+            .hero-title { font-size: 1.45rem; }
+            .hero-subtitle { font-size: 0.85rem; }
+            .article-text { font-size: 0.92rem; line-height: 1.7; }
+
+            #widget-container {
+                width: calc(100vw - 20px);
+                max-width: 320px;
+                height: min(400px, 58vh);
+                bottom: 10px;
+                right: 10px;
+            }
+            #widget-controls { padding: 10px 12px; gap: 8px; }
+            .play-btn { width: 30px; height: 30px; font-size: 0.85rem; }
+            .frame-counter { font-size: 0.65rem; min-width: 48px; }
+        }
     </style>
 
     <script type="importmap">
@@ -573,15 +644,36 @@
             widget.classList.add('open');
             widget.classList.remove('minimized');
             bubble.classList.add('hidden');
+            setTimeout(() => {
+                resizeRendererToContainer(holder);
+            }, 50);
         }
         function closeWidget() {
             widget.classList.remove('open');
             bubble.classList.remove('hidden');
         }
         document.getElementById('close-btn').addEventListener('click', closeWidget);
-        document.getElementById('minimize-btn').addEventListener('click', () => widget.classList.toggle('minimized'));
+        document.getElementById('minimize-btn').addEventListener('click', () => {
+            widget.classList.toggle('minimized');
+            if (!widget.classList.contains('minimized')) {
+                setTimeout(() => resizeRendererToContainer(holder), 50);
+            }
+        });
         bubble.addEventListener('click', openWidget);
         openWidget();
+
+        // Window resize observer to adapt 3D viewport and clamp widget within bounds
+        window.addEventListener('resize', () => {
+            if (holder) resizeRendererToContainer(holder);
+            if (widget && widget.style.left) {
+                const maxLeft = Math.max(0, window.innerWidth - widget.offsetWidth);
+                const maxTop = Math.max(0, window.innerHeight - widget.offsetHeight);
+                let currentLeft = parseFloat(widget.style.left);
+                let currentTop = parseFloat(widget.style.top);
+                if (!isNaN(currentLeft)) widget.style.left = `${Math.min(Math.max(0, currentLeft), maxLeft)}px`;
+                if (!isNaN(currentTop)) widget.style.top = `${Math.min(Math.max(0, currentTop), maxTop)}px`;
+            }
+        });
 
         // Drag functionality for floating widget
         let isDragging = false;
