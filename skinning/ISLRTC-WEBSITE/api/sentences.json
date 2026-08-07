@@ -1,0 +1,148 @@
+{
+  "sentences": [
+    {
+      "id": 1,
+      "english": "He is coming home"
+    },
+    {
+      "id": 2,
+      "english": "He wants to come home"
+    },
+    {
+      "id": 3,
+      "english": "He wants to go home"
+    },
+    {
+      "id": 4,
+      "english": "He is happy to see me"
+    },
+    {
+      "id": 5,
+      "english": "He wants to see you"
+    },
+    {
+      "id": 6,
+      "english": "He wants to go to the office"
+    },
+    {
+      "id": 7,
+      "english": "He wants to go to school"
+    },
+    {
+      "id": 8,
+      "english": "Hello, he wants to see you"
+    },
+    {
+      "id": 9,
+      "english": "Hello, I want to see you"
+    },
+    {
+      "id": 10,
+      "english": "I want to see him"
+    },
+    {
+      "id": 11,
+      "english": "I want to come home"
+    },
+    {
+      "id": 12,
+      "english": "I am going home"
+    },
+    {
+      "id": 13,
+      "english": "I want to go home"
+    },
+    {
+      "id": 14,
+      "english": "I am happy to see you"
+    },
+    {
+      "id": 15,
+      "english": "I want to see you"
+    },
+    {
+      "id": 16,
+      "english": "I want to go to the office"
+    },
+    {
+      "id": 17,
+      "english": "I want to go to school"
+    },
+    {
+      "id": 18,
+      "english": "He is coming home now"
+    },
+    {
+      "id": 19,
+      "english": "He sees me now"
+    },
+    {
+      "id": 20,
+      "english": "He wants to eat now"
+    },
+    {
+      "id": 21,
+      "english": "He is going to the office now"
+    },
+    {
+      "id": 22,
+      "english": "He is going to school now"
+    },
+    {
+      "id": 23,
+      "english": "Come home now"
+    },
+    {
+      "id": 24,
+      "english": "I see you now"
+    },
+    {
+      "id": 25,
+      "english": "I want to eat now"
+    },
+    {
+      "id": 26,
+      "english": "I am going to the office now"
+    },
+    {
+      "id": 27,
+      "english": "I am going to school now"
+    },
+    {
+      "id": 28,
+      "english": "You are happy now"
+    },
+    {
+      "id": 29,
+      "english": "You want to eat now"
+    },
+    {
+      "id": 30,
+      "english": "Thank you, he is happy"
+    },
+    {
+      "id": 31,
+      "english": "Thank you, I am happy"
+    },
+    {
+      "id": 32,
+      "english": "You want to go home"
+    },
+    {
+      "id": 33,
+      "english": "You want to see me"
+    },
+    {
+      "id": 34,
+      "english": "You are coming to the office"
+    },
+    {
+      "id": 35,
+      "english": "You are going to school"
+    },
+    {
+      "id": 36,
+      "english": "Hello, I want to say thank you"
+    }
+  ]
+}

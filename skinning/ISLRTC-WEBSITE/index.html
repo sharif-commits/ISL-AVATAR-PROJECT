@@ -296,9 +296,9 @@ var S3WaaSAccessibilityParams = {"blogInfoName":"Indian Sign Language Research a
     <script type="importmap">
       {
         "imports": {
-          "three": "../src/assets/vendor/three.module.js",
-          "three/addons/loaders/GLTFLoader.js": "../src/assets/vendor/GLTFLoader.js",
-          "three/addons/controls/OrbitControls.js": "../src/assets/vendor/OrbitControls.js"
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/loaders/GLTFLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
+          "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js"
         }
       }
     </script>
@@ -1025,6 +1025,7 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
 
         const loader = new GLTFLoader();
         const glbPaths = [
+            './assets/finalclothedmale.glb',
             '../src/assets/finalclothedmale.glb',
             './src/assets/finalclothedmale.glb',
             '/src/assets/finalclothedmale.glb'
@@ -1258,8 +1259,9 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
             if (span) { span.classList.add('playing'); activeSpan = span; }
 
             const fetchUrls = [
-                `../api/translate/${id}.json`,
+                `./api/translate/${id}.json`,
                 `api/translate/${id}.json`,
+                `../api/translate/${id}.json`,
                 `/api/translate?id=${encodeURIComponent(id)}`,
                 `../api/translate?id=${encodeURIComponent(id)}`
             ];
@@ -1434,6 +1436,17 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
         document.addEventListener('mouseup', handleSelection);
         document.addEventListener('touchend', handleSelection);
 
+        // Direct click interaction for all sentence units
+        document.querySelectorAll('.sentence-unit').forEach(unit => {
+            unit.style.cursor = 'pointer';
+            unit.addEventListener('click', (e) => {
+                const id = unit.getAttribute('data-id');
+                if (id) {
+                    triggerSentenceAnimation(id);
+                }
+            });
+        });
+
         // ONLY play animation when user explicitly clicks the floating translate button
         floatingBtn.addEventListener('click', () => {
             if (pendingId) triggerSentenceAnimation(pendingId);
@@ -1442,7 +1455,7 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
         });
 
         document.addEventListener('mousedown', (e) => {
-            if (e.target !== floatingBtn) {
+            if (e.target !== floatingBtn && !e.target.closest('.sentence-unit')) {
                 setTimeout(() => {
                     if (window.getSelection().toString().trim().length === 0) hideFloatingBtn();
                 }, 0);
