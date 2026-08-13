@@ -145,7 +145,7 @@
         #floating-translate-btn {
             position: fixed;
             display: none;
-            z-index: 2000;
+            z-index: 9999;
             background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
             color: #ffffff;
             border: none;
@@ -157,8 +157,12 @@
             box-shadow: 0 8px 24px rgba(6, 182, 212, 0.45);
             transform: translate(-50%, -100%);
             white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
+            transition: opacity 0.15s ease, transform 0.15s ease;
         }
         #floating-translate-btn:hover { transform: translate(-50%, -100%) scale(1.05); }
+        #floating-translate-btn.placed-below { transform: translate(-50%, 0); }
+        #floating-translate-btn.placed-below:hover { transform: translate(-50%, 0) scale(1.05); }
         #floating-translate-btn::after {
             content: '';
             position: absolute;
@@ -167,6 +171,12 @@
             border-width: 6px 6px 0 6px;
             border-style: solid;
             border-color: var(--accent-blue) transparent transparent transparent;
+        }
+        #floating-translate-btn.placed-below::after {
+            bottom: auto;
+            top: -6px;
+            border-width: 0 6px 6px 6px;
+            border-color: transparent transparent var(--accent-cyan) transparent;
         }
 
         /* ===== Floating Pop-Up Avatar Widget (bottom-right, portrait) ===== */
@@ -248,6 +258,7 @@
         }
         #scrubber { flex-grow: 1; accent-color: var(--accent-cyan); cursor: pointer; height: 5px; }
         .frame-counter { font-size: 0.72rem; font-family: monospace; color: var(--text-muted); min-width: 56px; text-align: right; }
+        .latency-badge { font-size: 0.68rem; font-family: monospace; color: var(--accent-green); min-width: 64px; text-align: right; }
 
         .overlay-card {
             position: absolute; top: 12px; left: 12px; right: 12px;
@@ -446,6 +457,7 @@
             <button class="play-btn" id="widget-play-btn">▶</button>
             <input type="range" id="scrubber" min="0" max="100" value="0">
             <span class="frame-counter" id="frame-counter">0 / 0</span>
+            <span class="latency-badge" id="latency-badge" title="Click to first-frame-painted"></span>
         </div>
     </div>
 
@@ -576,11 +588,14 @@
         let currentFrame = 0;
         let isPlaying = false;
         let timeAccum = 0;
+        let frameGaps = [];
+        let lastFrameAdvanceTime = null;
 
         const uiRefs = {
             playBtn: document.getElementById('widget-play-btn'),
             scrubber: document.getElementById('scrubber'),
             counter: document.getElementById('frame-counter'),
+            latencyBadge: document.getElementById('latency-badge'),
             overlayEnglish: document.getElementById('widget-overlay-english'),
             overlayGloss: document.getElementById('widget-overlay-gloss'),
         };
@@ -620,7 +635,12 @@
             renderer.setSize(w, h);
         }
 
-        function playAnimationData(data) {
+        // playAnimationData now takes tClick (performance.now() at the moment
+        // the user's click/tap was received) and tFetchDone (performance.now()
+        // right after the network response body finished parsing as JSON), so
+        // it can report a proper breakdown of where the click-to-first-frame
+        // time actually went: server+network vs. client-side parse+apply.
+        function playAnimationData(data, tClick, tFetchDone) {
             animationFrames = data.frames;
             currentFrame = 0;
             timeAccum = 0;
@@ -631,6 +651,43 @@
             updateOverlay(data.english || data.label || '', data.gloss || '');
 
             applyFrame(0);
+
+            // applyFrame() only updates bone quaternions in memory -- the GPU
+            // doesn't actually paint that pose until the next render tick, so
+            // "animation started" is stamped inside a requestAnimationFrame
+            // callback rather than right after applyFrame() returns. That's
+            // the honest point at which "the animation just starts" for a
+            requestAnimationFrame(() => {
+                const tPainted = performance.now();
+                const clickToStartMs = Math.round(tPainted - tClick);
+                const serverNetworkMs = Math.round(tFetchDone - tClick);
+
+                // NEW: pull server.py's own interpolate_sentence() latency_ms out of
+                // the response, and derive the JSON/gzip/HTTP portion by subtraction.
+                const serverComputeMs = Math.round(data.server_compute_ms ?? 0);
+                const serializeNetworkMs = serverNetworkMs - serverComputeMs;
+                const clientMs = clickToStartMs - serverNetworkMs;
+
+                const timing = {
+                    id: data.id,
+                    gloss_count: (data.gloss || '').split(' ').filter(Boolean).length,
+                    clickToStartMs,
+                    serverComputeMs,       // was: serverNetworkMs
+                    serializeNetworkMs,    // new
+                    clientMs,
+                };
+                console.log(
+                    `[timing] id=${data.id} click→first-frame-painted: ${clickToStartMs} ms ` +
+                    `(compute: ${serverComputeMs} ms, serialize+net: ${serializeNetworkMs} ms, client: ${clientMs} ms)`
+                );
+                window.__lastTiming = timing;
+                window.dispatchEvent(new CustomEvent('isl-animation-started', { detail: timing }));
+
+                if (uiRefs.latencyBadge) {
+                    uiRefs.latencyBadge.textContent = `${clickToStartMs} ms`;
+                }
+            });
+
             startPlayback();
         }
 
@@ -744,42 +801,48 @@
         let activeSpan = null;
 
         // ===== Translate tab: select-a-sentence -> LIVE server-side interpolation =====
-        // Still hits /api/translate, which is backed by live_interpolator.py doing
-        // real-time NPZ -> SLERP -> quaternion work.
+        // Hits /api/translate?id=...&nocache=1 ONLY. There is no static-JSON
+        // pre-fetch attempt anymore: previously this function tried
+        // `api/translate/${id}.json` first and only fell back to the live API
+        // on a 404. That meant if a static JSON file for a sentence ever
+        // existed on disk (deployed by mistake, left over from an older
+        // build, etc.) it would silently be served instead of ever touching
+        // live_interpolator.py, with no visible sign to the user that this
+        // had happened. Removing that path guarantees every click runs the
+        // real NPZ -> SLERP -> quaternion pipeline in live_interpolator.py.
+        // The `nocache=1` param additionally tells server.py to skip its
+        // in-memory warm-up cache too, so this is a genuine live run every
+        // single click, not just on the very first click per sentence.
         async function triggerSentenceAnimation(id) {
             stopPlayback();
+            frameGaps = [];
+            lastFrameAdvanceTime = null;
             openWidget();
 
             if (activeSpan) activeSpan.classList.remove('playing');
             const span = document.querySelector(`.sentence-unit[data-id="${id}"]`);
             if (span) { span.classList.add('playing'); activeSpan = span; }
 
+            const tClick = performance.now();
+            if (uiRefs.latencyBadge) uiRefs.latencyBadge.textContent = '…';
+
             try {
-                let response = await fetch(`api/translate/${id}.json`);
-                if (!response.ok) {
-                    response = await fetch(`/api/translate?id=${encodeURIComponent(id)}`);
-                }
+                const response = await fetch(`/api/translate?id=${encodeURIComponent(id)}&nocache=1`);
                 if (response.ok) {
                     const data = await response.json();
+                    const tFetchDone = performance.now();
                     if (data.success && data.frames && data.frames.length > 0) {
-                        playAnimationData(data);
+                        playAnimationData(data, tClick, tFetchDone);
                         return;
                     }
+                    console.error("Translate response missing frames:", data);
+                } else {
+                    console.error("Translate request failed with status", response.status);
                 }
-            } catch (e) {
-                try {
-                    const response = await fetch(`/api/translate?id=${encodeURIComponent(id)}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.success && data.frames && data.frames.length > 0) {
-                            playAnimationData(data);
-                            return;
-                        }
-                    }
-                } catch (err) {
-                    console.error("Could not fetch animation frames:", err);
-                }
+            } catch (err) {
+                console.error("Could not fetch animation frames:", err);
             }
+            if (uiRefs.latencyBadge) uiRefs.latencyBadge.textContent = 'error';
         }
         window.triggerSentenceAnimation = triggerSentenceAnimation;
 
@@ -799,12 +862,16 @@
 
         // 5. Render Loop
         const clock = new THREE.Clock();
+
+        animate();
+
+        window.addEventListener('resize', () => resizeRendererToContainer(holder));
         function animate() {
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
             if (modelLoaded && isPlaying && animationFrames.length) {
                 timeAccum += dt;
-                const frameDur = 1 / 30;
+                const frameDur = 1 / 25;
                 if (timeAccum >= frameDur) {
                     timeAccum -= frameDur;
                     if (currentFrame < animationFrames.length - 1) {
@@ -812,34 +879,57 @@
                         applyFrame(currentFrame);
                         uiRefs.scrubber.value = currentFrame;
                         uiRefs.counter.textContent = `${currentFrame + 1} / ${animationFrames.length}`;
+
+                        const now = performance.now();
+                        if (lastFrameAdvanceTime !== null) {
+                            frameGaps.push(now - lastFrameAdvanceTime);
+                        }
+                        lastFrameAdvanceTime = now;
                     } else {
                         stopPlayback();
+
+                        const targetGapMs = 1000 / 25;
+                        if (frameGaps.length > 0) {
+                            const meanGap = frameGaps.reduce((a, b) => a + b, 0) / frameGaps.length;
+                            const maxGap = Math.max(...frameGaps);
+                            const stutterThreshold = targetGapMs * 1.5;
+                            const stutterCount = frameGaps.filter(g => g > stutterThreshold).length;
+
+                            window.dispatchEvent(new CustomEvent('isl-playback-complete', {
+                                detail: {
+                                    totalFrames: animationFrames.length,
+                                    meanFrameGapMs: Math.round(meanGap * 100) / 100,
+                                    maxFrameGapMs: Math.round(maxGap * 100) / 100,
+                                    targetFrameGapMs: Math.round(targetGapMs * 100) / 100,
+                                    effectiveFps: Math.round((1000 / meanGap) * 10) / 10,
+                                    stutterCount,
+                                    stutterPct: Math.round((stutterCount / frameGaps.length) * 1000) / 10,
+                                }
+                            }));
+                        }
+
+                        frameGaps = [];
+                        lastFrameAdvanceTime = null;
                     }
                 }
             }
             controls.update();
             renderer.render(scene, camera);
         }
-        animate();
-
-        window.addEventListener('resize', () => resizeRendererToContainer(holder));
-
         // 6. Reading Panel — group sentences into readable paragraphs, footnote-numbered
         const SECTION_GROUPS = [
             { title: "Coming & Going Home", ids: [1, 2, 3, 11, 12, 13, 18, 23, 32] },
             { title: "Seeing One Another", ids: [4, 5, 8, 9, 10, 14, 15, 19, 24, 33] },
             { title: "Work, School & Daily Routine", ids: [6, 7, 16, 17, 20, 21, 22, 25, 26, 27, 29, 34, 35] },
-            { title: "Greetings & Gratitude", ids: [28, 30, 31, 36] }
+            { title: "Greetings & Gratitude", ids: [28, 30, 31, 36] },
+            // Matches run_benchmark.py's 2/5/10/20-gloss test sentences, kept
+            // separate from the natural-language groups above so it's obvious
+            // these exist for benchmarking, not for reading.
+            { title: "Benchmark Test Sentences (2 / 5 / 10 / 20 glosses)", ids: [37, 38, 39, 40] }
         ];
 
         async function loadReadingPanel() {
-            let res;
-            try {
-                res = await fetch('api/sentences.json');
-                if (!res.ok) res = await fetch('/api/sentences');
-            } catch (e) {
-                res = await fetch('/api/sentences');
-            }
+            const res = await fetch('/api/sentences');
             if (!res.ok) return;
             const data = await res.json();
             const byId = {};
@@ -875,7 +965,10 @@
         }
 
         function hideFloatingBtn() {
-            floatingBtn.style.display = 'none';
+            if (floatingBtn) {
+                floatingBtn.style.display = 'none';
+                floatingBtn.classList.remove('placed-below');
+            }
             pendingId = null;
         }
 
@@ -892,22 +985,55 @@
             if (!rect || (rect.width === 0 && rect.height === 0)) { hideFloatingBtn(); return; }
 
             pendingId = anchorSpan.getAttribute('data-id');
-            floatingBtn.style.left = `${rect.left + rect.width / 2}px`;
-            floatingBtn.style.top = `${rect.top - 10}px`;
+            const isMobileOrTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 850);
+
+            // On mobile/iPads/small screens, position button BELOW selection to prevent OS Copy/Select All popup overlap
+            if (isMobileOrTouch) {
+                const centerX = Math.max(70, Math.min(window.innerWidth - 70, rect.left + rect.width / 2));
+                floatingBtn.style.left = `${centerX}px`;
+                floatingBtn.style.top = `${rect.bottom + 12}px`;
+                floatingBtn.classList.add('placed-below');
+            } else {
+                floatingBtn.style.left = `${rect.left + rect.width / 2}px`;
+                floatingBtn.style.top = `${rect.top - 10}px`;
+                floatingBtn.classList.remove('placed-below');
+            }
             floatingBtn.style.display = 'block';
         }
 
         document.addEventListener('mouseup', handleSelection);
         document.addEventListener('touchend', handleSelection);
-
-        floatingBtn.addEventListener('click', () => {
-            if (pendingId) triggerSentenceAnimation(pendingId);
-            window.getSelection().removeAllRanges();
-            hideFloatingBtn();
+        document.addEventListener('keyup', handleSelection);
+        document.addEventListener('selectionchange', () => {
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || sel.toString().trim().length === 0) {
+                hideFloatingBtn();
+            }
         });
 
+        // Direct tap-to-translate on mobile/iPads for effortless single-tap translation
+        document.addEventListener('click', (e) => {
+            const unit = e.target.closest('.sentence-unit');
+            if (unit) {
+                const id = unit.getAttribute('data-id');
+                if (id) {
+                    triggerSentenceAnimation(id);
+                    hideFloatingBtn();
+                }
+            }
+        });
+
+        if (floatingBtn) {
+            floatingBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (pendingId) triggerSentenceAnimation(pendingId);
+                if (window.getSelection()) window.getSelection().removeAllRanges();
+                hideFloatingBtn();
+            });
+        }
+
         document.addEventListener('mousedown', (e) => {
-            if (e.target !== floatingBtn) {
+            if (floatingBtn && e.target !== floatingBtn) {
                 setTimeout(() => {
                     if (window.getSelection().toString().trim().length === 0) hideFloatingBtn();
                 }, 0);

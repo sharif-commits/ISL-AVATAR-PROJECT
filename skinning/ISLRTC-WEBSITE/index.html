@@ -171,9 +171,16 @@ var S3WaaSAccessibilityParams = {"blogInfoName":"Indian Sign Language Research a
             transform: translate(-50%, -100%);
             white-space: nowrap;
             -webkit-tap-highlight-color: transparent;
+            transition: opacity 0.15s ease, transform 0.15s ease;
         }
         #floating-translate-btn:hover {
             transform: translate(-50%, -100%) scale(1.05);
+        }
+        #floating-translate-btn.placed-below {
+            transform: translate(-50%, 0);
+        }
+        #floating-translate-btn.placed-below:hover {
+            transform: translate(-50%, 0) scale(1.05);
         }
         #floating-translate-btn::after {
             content: '';
@@ -184,6 +191,12 @@ var S3WaaSAccessibilityParams = {"blogInfoName":"Indian Sign Language Research a
             border-width: 6px 6px 0 6px;
             border-style: solid;
             border-color: #3b82f6 transparent transparent transparent;
+        }
+        #floating-translate-btn.placed-below::after {
+            bottom: auto;
+            top: -6px;
+            border-width: 0 6px 6px 6px;
+            border-color: transparent transparent #06b6d4 transparent;
         }
 
         /* Floating Pop-Up Avatar Widget */
@@ -1380,7 +1393,10 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
         }
 
         function hideFloatingBtn() {
-            floatingBtn.style.display = 'none';
+            if (floatingBtn) {
+                floatingBtn.style.display = 'none';
+                floatingBtn.classList.remove('placed-below');
+            }
             pendingId = null;
         }
 
@@ -1418,23 +1434,30 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
             }
 
             pendingId = foundId;
-            const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            const isMobileOrTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 850);
 
-            if (isTouch) {
-                const centerX = Math.max(60, Math.min(window.innerWidth - 60, rect.left + rect.width / 2));
+            if (isMobileOrTouch) {
+                const centerX = Math.max(70, Math.min(window.innerWidth - 70, rect.left + rect.width / 2));
                 floatingBtn.style.left = `${centerX}px`;
                 floatingBtn.style.top = `${rect.bottom + 12}px`;
-                floatingBtn.style.transform = 'translate(-50%, 0)';
+                floatingBtn.classList.add('placed-below');
             } else {
                 floatingBtn.style.left = `${rect.left + rect.width / 2}px`;
                 floatingBtn.style.top = `${rect.top - 10}px`;
-                floatingBtn.style.transform = 'translate(-50%, -100%)';
+                floatingBtn.classList.remove('placed-below');
             }
             floatingBtn.style.display = 'block';
         }
 
         document.addEventListener('mouseup', handleSelection);
         document.addEventListener('touchend', handleSelection);
+        document.addEventListener('keyup', handleSelection);
+        document.addEventListener('selectionchange', () => {
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || sel.toString().trim().length === 0) {
+                hideFloatingBtn();
+            }
+        });
 
         // Direct click interaction for all sentence units
         document.querySelectorAll('.sentence-unit').forEach(unit => {
