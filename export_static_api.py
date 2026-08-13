@@ -17,10 +17,14 @@ def main():
     translate_dir = os.path.join(api_dir, "translate")
     os.makedirs(translate_dir, exist_ok=True)
 
-    # Also create in skinning/api for skinning/website.html relative paths
+    # Also create in skinning/api and skinning/ISLRTC-WEBSITE/api for relative paths
     skinning_api_dir = os.path.join(skinning_dir, "api")
     skinning_translate_dir = os.path.join(skinning_api_dir, "translate")
     os.makedirs(skinning_translate_dir, exist_ok=True)
+
+    islrtc_api_dir = os.path.join(skinning_dir, "ISLRTC-WEBSITE", "api")
+    islrtc_translate_dir = os.path.join(islrtc_api_dir, "translate")
+    os.makedirs(islrtc_translate_dir, exist_ok=True)
 
     # 1. Export sentences.json
     sentences_data = {
@@ -29,6 +33,8 @@ def main():
     with open(os.path.join(api_dir, "sentences.json"), "w", encoding="utf-8") as f:
         json.dump(sentences_data, f, indent=2)
     with open(os.path.join(skinning_api_dir, "sentences.json"), "w", encoding="utf-8") as f:
+        json.dump(sentences_data, f, indent=2)
+    with open(os.path.join(islrtc_api_dir, "sentences.json"), "w", encoding="utf-8") as f:
         json.dump(sentences_data, f, indent=2)
     print("Exported sentences.json")
 
@@ -44,6 +50,10 @@ def main():
 
         skinning_file_path = os.path.join(skinning_translate_dir, f"{sid}.json")
         with open(skinning_file_path, "w", encoding="utf-8") as f:
+            json.dump(json_obj, f)
+
+        islrtc_file_path = os.path.join(islrtc_translate_dir, f"{sid}.json")
+        with open(islrtc_file_path, "w", encoding="utf-8") as f:
             json.dump(json_obj, f)
         
         print(f"Exported {file_path} ({len(raw_bytes)} bytes)")

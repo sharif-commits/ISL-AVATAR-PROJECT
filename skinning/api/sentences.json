@@ -143,6 +143,22 @@
     {
       "id": 36,
       "english": "Hello, I want to say thank you"
+    },
+    {
+      "id": 37,
+      "english": "[Benchmark] 2 glosses"
+    },
+    {
+      "id": 38,
+      "english": "[Benchmark] 5 glosses"
+    },
+    {
+      "id": 39,
+      "english": "[Benchmark] 10 glosses"
+    },
+    {
+      "id": 40,
+      "english": "[Benchmark] 20 glosses"
     }
   ]
 }

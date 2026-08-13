@@ -309,9 +309,9 @@ var S3WaaSAccessibilityParams = {"blogInfoName":"Indian Sign Language Research a
     <script type="importmap">
       {
         "imports": {
-          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-          "three/addons/loaders/GLTFLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
-          "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js"
+          "three": "./assets/vendor/three.module.js",
+          "three/addons/loaders/GLTFLoader.js": "./assets/vendor/GLTFLoader.js",
+          "three/addons/controls/OrbitControls.js": "./assets/vendor/OrbitControls.js"
         }
       }
     </script>
@@ -1271,18 +1271,19 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
             const span = document.querySelector(`.sentence-unit[data-id="${id}"]`);
             if (span) { span.classList.add('playing'); activeSpan = span; }
 
+            const timestamp = Date.now();
             const fetchUrls = [
-                `./api/translate/${id}.json`,
-                `api/translate/${id}.json`,
-                `../api/translate/${id}.json`,
-                `/api/translate?id=${encodeURIComponent(id)}`,
-                `../api/translate?id=${encodeURIComponent(id)}`
+                `./api/translate/${id}.json?_t=${timestamp}`,
+                `api/translate/${id}.json?_t=${timestamp}`,
+                `../api/translate/${id}.json?_t=${timestamp}`,
+                `/api/translate?id=${encodeURIComponent(id)}&nocache=1&_t=${timestamp}`,
+                `../api/translate?id=${encodeURIComponent(id)}&nocache=1&_t=${timestamp}`
             ];
 
             let data = null;
             for (const url of fetchUrls) {
                 try {
-                    const response = await fetch(url);
+                    const response = await fetch(url, { cache: 'no-store' });
                     if (response.ok) {
                         const resData = await response.json();
                         if (resData && resData.frames && resData.frames.length > 0) {
@@ -1459,26 +1460,21 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
             }
         });
 
-        // Direct click interaction for all sentence units
-        document.querySelectorAll('.sentence-unit').forEach(unit => {
-            unit.style.cursor = 'pointer';
-            unit.addEventListener('click', (e) => {
-                const id = unit.getAttribute('data-id');
-                if (id) {
-                    triggerSentenceAnimation(id);
+        // ONLY play animation when user explicitly selects text and clicks the floating translate button
+        if (floatingBtn) {
+            floatingBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (pendingId) {
+                    const idToPlay = pendingId;
+                    hideFloatingBtn();
+                    if (window.getSelection()) window.getSelection().removeAllRanges();
+                    triggerSentenceAnimation(idToPlay);
                 }
             });
-        });
-
-        // ONLY play animation when user explicitly clicks the floating translate button
-        floatingBtn.addEventListener('click', () => {
-            if (pendingId) triggerSentenceAnimation(pendingId);
-            window.getSelection().removeAllRanges();
-            hideFloatingBtn();
-        });
+        }
 
         document.addEventListener('mousedown', (e) => {
-            if (e.target !== floatingBtn && !e.target.closest('.sentence-unit')) {
+            if (floatingBtn && e.target !== floatingBtn) {
                 setTimeout(() => {
                     if (window.getSelection().toString().trim().length === 0) hideFloatingBtn();
                 }, 0);

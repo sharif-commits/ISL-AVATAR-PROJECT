@@ -28,6 +28,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html website.html dataset.html .nojekyll script.js _site/ 2>/dev/null || true
+          cp -r assets _site/ 2>/dev/null || true
           cp -r api _site/ 2>/dev/null || true
           cp -r data _site/ 2>/dev/null || true
           cp -r src _site/ 2>/dev/null || true
