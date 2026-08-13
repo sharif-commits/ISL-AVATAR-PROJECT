@@ -849,7 +849,7 @@ var S3WaaSAccessibilityParams = {"blogInfoName":"Indian Sign Language Research a
         </button>
         
 </footer>
-<script>
+<script type="speculationrules">
 {"prefetch":[{"source":"document","where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":["/wp-*.php","/wp-admin/*","/s3f7e2b2b75b04175610e5a00c1e221ebb/uploads/*","/wp-content/*","/wp-content/plugins/*","/wp-content/themes/sdo-theme/*","/*\\?(.+)"]}},{"not":{"selector_matches":"a[rel~=\"nofollow\"]"}},{"not":{"selector_matches":".no-prefetch, .no-prefetch a"}}]},"eagerness":"conservative"}]}
 </script>
     <script>
@@ -1407,19 +1407,24 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
                 hideFloatingBtn();
                 return;
             }
+
             const selText = sel.toString().trim();
-            if (selText.length < 2) {
+            if (selText.length === 0) {
                 hideFloatingBtn();
                 return;
             }
 
-            let foundId = findMatchingSentenceId(selText);
+            // 1. Direct DOM lookup first: check if selection is inside a .sentence-unit element
+            let unit = findSentenceUnit(sel.anchorNode) || findSentenceUnit(sel.focusNode);
+            if (!unit && sel.rangeCount > 0) {
+                unit = findSentenceUnit(sel.getRangeAt(0).commonAncestorContainer);
+            }
+
+            let foundId = unit ? unit.getAttribute('data-id') : null;
+
+            // 2. Fallback fuzzy text match if selected outside span
             if (!foundId) {
-                const anchorSpan = findSentenceUnit(sel.anchorNode);
-                const focusSpan = findSentenceUnit(sel.focusNode);
-                if (anchorSpan && anchorSpan === focusSpan) {
-                    foundId = anchorSpan.getAttribute('data-id');
-                }
+                foundId = findMatchingSentenceId(selText);
             }
 
             if (!foundId) {
@@ -1450,20 +1455,16 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
             floatingBtn.style.display = 'block';
         }
 
-        document.addEventListener('mouseup', handleSelection);
-        document.addEventListener('touchend', handleSelection);
-        document.addEventListener('keyup', handleSelection);
-        document.addEventListener('selectionchange', () => {
-            const sel = window.getSelection();
-            if (!sel || sel.isCollapsed || sel.toString().trim().length === 0) {
-                hideFloatingBtn();
-            }
-        });
+        const runSelectionCheck = () => setTimeout(handleSelection, 10);
+        document.addEventListener('mouseup', runSelectionCheck);
+        document.addEventListener('touchend', runSelectionCheck);
+        document.addEventListener('keyup', runSelectionCheck);
 
         // ONLY play animation when user explicitly selects text and clicks the floating translate button
         if (floatingBtn) {
             floatingBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                e.preventDefault();
                 if (pendingId) {
                     const idToPlay = pendingId;
                     hideFloatingBtn();
@@ -1474,10 +1475,13 @@ jQuery(function(jQuery){jQuery.datepicker.setDefaults({"closeText":"Close","curr
         }
 
         document.addEventListener('mousedown', (e) => {
-            if (floatingBtn && e.target !== floatingBtn) {
+            if (floatingBtn && e.target !== floatingBtn && !floatingBtn.contains(e.target)) {
                 setTimeout(() => {
-                    if (window.getSelection().toString().trim().length === 0) hideFloatingBtn();
-                }, 0);
+                    const sel = window.getSelection();
+                    if (!sel || sel.isCollapsed || sel.toString().trim().length === 0) {
+                        hideFloatingBtn();
+                    }
+                }, 100);
             }
         });
     </script>

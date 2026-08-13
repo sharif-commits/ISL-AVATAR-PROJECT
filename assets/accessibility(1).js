@@ -412,7 +412,9 @@ jQuery(document).ready(function ($) {
 
     
     const menufooter = document.querySelector('.footerMenu [role="menubar"]');
-    const items = Array.from(menufooter.querySelectorAll('[role="menuitem"]'));
+    if (menufooter) {
+        const items = Array.from(menufooter.querySelectorAll('[role="menuitem"]'));
+    }
 
     function getFocusableElements() {
         return Array.from(document.querySelectorAll(`
